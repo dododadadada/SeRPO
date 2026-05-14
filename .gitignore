@@ -14,12 +14,10 @@ __pycache__/
 # appworld artifacts (large rollouts, evaluations)
 appworld/experiments/outputs/
 
-# grpo artifacts
+# grpo artifacts (large build outputs only — fixtures stay tracked for reproducible tests)
 grpo/data/
 grpo/ckpts/
 grpo/metrics/
-grpo/tests/fixtures/*.jsonl
-grpo/tests/fixtures/*.json
 
 # rubric reward artifacts
 rubric_reward/results/
