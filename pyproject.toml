@@ -23,3 +23,10 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["grpo*"]
 exclude = ["grpo.data*", "grpo.ckpts*", "grpo.metrics*", "grpo.tests.fixtures*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "gpu: tests that require a GPU (skipped by default; run with -m gpu)",
+]
+addopts = "-m 'not gpu'"
+testpaths = ["grpo/tests"]
