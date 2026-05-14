@@ -24,7 +24,7 @@ class RolloutData:
     response_mask: list[int]
     step_token_ranges: list[tuple[int, int]]
     segments: list[dict[str, Any]]
-    outcome: int
+    outcome: float  # ∈ [0, 1]; binary {0.0, 1.0} or continuous pass_rate
     token_adv: np.ndarray = field(default=None)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:

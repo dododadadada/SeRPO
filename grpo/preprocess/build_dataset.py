@@ -3,10 +3,21 @@
 CLI:
   python -m grpo.preprocess.build_dataset \
       --method {vanilla,serpo} \
-      --condition failonly \
+      --condition {failonly,full} \
+      --outcome-type {binary,continuous} \
       --rollout-dir appworld/experiments/outputs/rollout/round0 \
       --joint-dir rubric_reward/results/rollout \
       --output-dir grpo/data/round0
+
+Output filename: ``{method}_{condition}_{outcome_type}.parquet``.
+
+Conditions:
+  - ``failonly``: only task_ids where binary success == 0 across all 8 seeds (81 tasks).
+  - ``full``: all 90 tasks.
+
+Outcome types (only relevant for vanilla method):
+  - ``binary``: 1.0 if all tests pass else 0.0 (AppWorld's ``success`` field).
+  - ``continuous``: ``len(passes) / num_tests`` ∈ [0, 1].
 """
 from __future__ import annotations
 
@@ -30,12 +41,56 @@ from grpo.preprocess.tokenize_trajectory import tokenize_trajectory
 logger = logging.getLogger(__name__)
 
 MAX_TOKENS = 32000
+MAX_STEPS = 50  # max lm_calls.jsonl lines; matches Phase 2 joint reward filter
+MAX_ENV_IO_BYTES = 200_000  # 200KB; matches Phase 2 joint reward filter
 
 
-def _load_outcomes(rollout_dir: Path, seed: int) -> dict[str, bool]:
+def _is_trajectory_too_large(
+    lm_calls_path: Path,
+    max_steps: int = MAX_STEPS,
+    max_env_io_bytes: int = MAX_ENV_IO_BYTES,
+) -> tuple[bool, str | None]:
+    """Cheap pre-tokenization filter to avoid memory blowups on outlier
+    trajectories (e.g., agent infinite loops with huge env_io). Returns
+    (too_large, reason)."""
+    # Step count: number of non-empty lines in lm_calls.jsonl.
+    try:
+        with lm_calls_path.open() as f:
+            n_steps = sum(1 for line in f if line.strip())
+    except Exception as e:
+        return True, f"lm_calls_read_error:{e}"
+    if n_steps > max_steps:
+        return True, f"steps>{max_steps}:{n_steps}"
+    # env_io size: located at logs/environment_io.md (sibling of lm_calls.jsonl).
+    env_io = lm_calls_path.parent / "environment_io.md"
+    if env_io.exists():
+        size = env_io.stat().st_size
+        if size > max_env_io_bytes:
+            return True, f"env_io>{max_env_io_bytes}:{size}"
+    return False, None
+
+
+def _load_outcomes(
+    rollout_dir: Path, seed: int, outcome_type: str = "binary",
+) -> dict[str, float]:
+    """Return ``{task_id: outcome}`` for one seed.
+
+    outcome_type='binary': 1.0 if AppWorld success == True else 0.0.
+    outcome_type='continuous': passes / num_tests (clipped to [0, 1]).
+    """
     eval_path = rollout_dir / f"seed_{seed}" / "evaluations" / "train.json"
     data = json.loads(eval_path.read_text())
-    return {tid: rec.get("success", False) for tid, rec in data["individual"].items()}
+    out: dict[str, float] = {}
+    for tid, rec in data["individual"].items():
+        if outcome_type == "binary":
+            out[tid] = 1.0 if rec.get("success", False) else 0.0
+        elif outcome_type == "continuous":
+            npass = len(rec.get("passes", []))
+            ntest = int(rec.get("num_tests", 0))
+            out[tid] = (npass / ntest) if ntest > 0 else 0.0
+        else:
+            raise ValueError(f"unknown outcome_type: {outcome_type!r}")
+    return out
 
 
 def _load_joint_records(joint_dir: Path, seed: int) -> dict[str, dict[str, Any]]:
@@ -94,7 +149,7 @@ def build_dataset_for_task_group(
                 response_mask=tok_result["response_mask"],
                 step_token_ranges=tok_result["step_token_ranges"],
                 segments=joint.get("segments", []),
-                outcome=int(inp["outcome"]),
+                outcome=float(inp["outcome"]),
             )
         )
 
@@ -117,7 +172,7 @@ def build_dataset_for_task_group(
                     "attention_mask": r.attention_mask,
                     "response_mask": r.response_mask,
                     "advantages": [float(x) for x in r.token_adv.tolist()],
-                    "outcome": r.outcome,
+                    "outcome": float(r.outcome),
                     "num_steps": len(r.step_token_ranges),
                 }
                 for r in rollouts
@@ -137,38 +192,55 @@ def run_build(
     rollout_dir: Path,
     joint_dir: Path,
     output_dir: Path,
+    outcome_type: str = "binary",
     tokenizer_name: str = "Qwen/Qwen2.5-7B-Instruct",
 ) -> None:
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-    if condition != "failonly":
-        raise NotImplementedError("v1 supports only condition=failonly")
+    if condition not in ("failonly", "full"):
+        raise ValueError(f"unknown condition: {condition!r}")
+    if outcome_type not in ("binary", "continuous"):
+        raise ValueError(f"unknown outcome_type: {outcome_type!r}")
 
-    failset = set(build_failset(rollout_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "failonly_task_ids.json").write_text(
-        json.dumps(sorted(failset), indent=2)
-    )
-    logger.info("fail-only task count: %d", len(failset))
 
-    seed_outcomes: dict[int, dict[str, bool]] = {}
+    seed_outcomes: dict[int, dict[str, float]] = {}
     seed_joints: dict[int, dict[str, dict[str, Any]]] = {}
     for seed in range(1, 9):
-        seed_outcomes[seed] = _load_outcomes(rollout_dir, seed)
+        seed_outcomes[seed] = _load_outcomes(rollout_dir, seed, outcome_type)
         seed_joints[seed] = _load_joint_records(joint_dir, seed)
 
-    out_path = output_dir / f"{method}_failonly.parquet"
+    # Determine task_id pool based on condition
+    if condition == "failonly":
+        task_id_pool: list[str] = build_failset(rollout_dir)
+        (output_dir / "failonly_task_ids.json").write_text(
+            json.dumps(task_id_pool, indent=2)
+        )
+        logger.info("fail-only task count: %d", len(task_id_pool))
+    else:  # full
+        # Use union of task_ids across seeds (in practice all seeds share the same set)
+        all_tids: set[str] = set()
+        for seed_n in range(1, 9):
+            all_tids.update(seed_outcomes[seed_n].keys())
+        task_id_pool = sorted(all_tids)
+        (output_dir / "full_task_ids.json").write_text(
+            json.dumps(task_id_pool, indent=2)
+        )
+        logger.info("full task count: %d", len(task_id_pool))
+
+    out_path = output_dir / f"{method}_{condition}_{outcome_type}.parquet"
     if out_path.exists():
         out_path.unlink()  # overwrite
 
     n_groups = 0
     n_rows = 0
     n_skipped_groups = 0
-    skipped_log_path = output_dir / "skipped.jsonl"
+    skipped_log_path = output_dir / f"skipped_{method}_{condition}_{outcome_type}.jsonl"
+    total_tasks = len(task_id_pool)
     with skipped_log_path.open("w") as skip_log:
-        for task_id in sorted(failset):
+        for task_idx, task_id in enumerate(task_id_pool, start=1):
             inputs: list[dict[str, Any]] = []
             group_ok = True
             for seed in range(1, 9):
@@ -187,6 +259,21 @@ def run_build(
                                 "task_id": task_id,
                                 "seed": seed,
                                 "reason": "lm_calls_missing",
+                            }
+                        )
+                        + "\n"
+                    )
+                    group_ok = False
+                    break
+                # Pre-tokenize size filter to avoid OOM on outlier trajectories.
+                too_large, reason = _is_trajectory_too_large(lm_calls)
+                if too_large:
+                    skip_log.write(
+                        json.dumps(
+                            {
+                                "task_id": task_id,
+                                "seed": seed,
+                                "reason": reason,
                             }
                         )
                         + "\n"
@@ -213,11 +300,16 @@ def run_build(
                         "seed": seed,
                         "lm_calls_path": lm_calls,
                         "joint_record": joint_rec or {"segments": []},
-                        "outcome": int(seed_outcomes[seed].get(task_id, False)),
+                        "outcome": float(seed_outcomes[seed].get(task_id, 0.0)),
                     }
                 )
             if not group_ok:
                 n_skipped_groups += 1
+                if task_idx % 10 == 0 or task_idx == total_tasks:
+                    logger.info(
+                        "progress %d/%d  groups=%d  rows=%d  skipped=%d  (latest skip: %s)",
+                        task_idx, total_tasks, n_groups, n_rows, n_skipped_groups, task_id,
+                    )
                 continue
 
             written = build_dataset_for_task_group(
@@ -234,6 +326,11 @@ def run_build(
             else:
                 n_groups += 1
                 n_rows += written
+            if task_idx % 10 == 0 or task_idx == total_tasks:
+                logger.info(
+                    "progress %d/%d  groups=%d  rows=%d  skipped=%d",
+                    task_idx, total_tasks, n_groups, n_rows, n_skipped_groups,
+                )
 
     logger.info(
         "done: %d groups written (%d rows), %d groups skipped — parquet: %s",
@@ -248,7 +345,13 @@ def main() -> None:
     )
     ap = argparse.ArgumentParser()
     ap.add_argument("--method", choices=["vanilla", "serpo"], required=True)
-    ap.add_argument("--condition", choices=["failonly"], default="failonly")
+    ap.add_argument("--condition", choices=["failonly", "full"], default="failonly")
+    ap.add_argument(
+        "--outcome-type",
+        choices=["binary", "continuous"],
+        default="binary",
+        help="binary: success bool (1/0). continuous: passes/num_tests ∈ [0,1].",
+    )
     ap.add_argument(
         "--rollout-dir",
         type=Path,
@@ -266,7 +369,8 @@ def main() -> None:
     )
     args = ap.parse_args()
     run_build(
-        args.method, args.condition, args.rollout_dir, args.joint_dir, args.output_dir,
+        args.method, args.condition, args.rollout_dir, args.joint_dir,
+        args.output_dir, outcome_type=args.outcome_type,
     )
 
 
