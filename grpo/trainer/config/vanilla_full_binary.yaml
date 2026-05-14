@@ -6,10 +6,11 @@ model_name: Qwen/Qwen2.5-7B-Instruct
 parquet_path: grpo/data/round0/vanilla_full_binary.parquet
 output_dir: grpo/ckpts/vanilla_full_binary/round1
 
-K_steps: 20
+K_steps: 40
 mini_batch_size: 8
 micro_batch_size: 1
-lr: 1.0e-6
+precache_micro_batch_size: 2
+lr: 3.0e-6
 clip_eps: 0.2
 kl_beta: 0.01
 grad_clip: 1.0

@@ -36,6 +36,9 @@ class GRPOConfig:
     K_steps: int = 20
     mini_batch_size: int = 8
     micro_batch_size: int = 1
+    # Pre-cache forward batch (old + ref logp). Larger value = faster pre-cache
+    # but higher peak GPU memory. Independent of training micro_batch_size.
+    precache_micro_batch_size: int = 1
     lr: float = 1e-6
     clip_eps: float = 0.2
     kl_beta: float = 0.01
@@ -220,9 +223,24 @@ def run_training(cfg: GRPOConfig) -> None:
         drop_last=True,
     )
 
-    logger.info("pre-caching old + ref log-probs ...")
+    # Materialize the dataloader once, then keep only the K batches we will
+    # actually consume — caching the full epoch wastes large amounts of GPU
+    # time when K << len(loader).
     batches = list(loader)
-    cached = cache_old_and_ref_logprobs(model, batches, cfg.micro_batch_size)
+    if cfg.K_steps <= len(batches):
+        batches_to_cache = batches[: cfg.K_steps]
+    else:
+        # Wrap if K exceeds epoch length (rare; preserves prior loop semantics).
+        reps = (cfg.K_steps + len(batches) - 1) // len(batches)
+        batches_to_cache = (batches * reps)[: cfg.K_steps]
+    logger.info(
+        "pre-caching old + ref log-probs for %d mini-batches "
+        "(precache_micro_batch_size=%d) ...",
+        len(batches_to_cache), cfg.precache_micro_batch_size,
+    )
+    cached = cache_old_and_ref_logprobs(
+        model, batches_to_cache, cfg.precache_micro_batch_size,
+    )
     logger.info("cached %d mini-batches", len(cached))
 
     optimizer = torch.optim.AdamW(
