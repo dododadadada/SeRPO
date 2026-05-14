@@ -1,0 +1,34 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# environments
+.env
+*.venv/
+.envrc
+
+# appworld artifacts (large rollouts, evaluations)
+appworld/experiments/outputs/
+
+# grpo artifacts
+grpo/data/
+grpo/ckpts/
+grpo/metrics/
+grpo/tests/fixtures/*.jsonl
+grpo/tests/fixtures/*.json
+
+# rubric reward artifacts
+rubric_reward/results/
+rubric_reward/__pycache__/
+rubric_reward_poc(mid_report)/results/
+
+# claude / local
+.claude/
+*.log
+
+# misc
+.DS_Store
