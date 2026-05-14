@@ -1,0 +1,15 @@
+{
+  "task_id": "07b42fd_1",
+  "instruction": "Follow all the classical artists on Spotify that have at least 22 followers.",
+  "num_steps": 20,
+  "segments": [
+    {"start_step": 1, "end_step": 1, "subgoal": "login", "type": "login", "contribution": 5, "rationale": "ok"},
+    {"start_step": 2, "end_step": 5, "subgoal": "explore", "type": "api_exploration", "contribution": 4, "rationale": "ok"},
+    {"start_step": 6, "end_step": 12, "subgoal": "fetch+follow", "type": "action", "contribution": 3, "rationale": "ok"},
+    {"start_step": 13, "end_step": 18, "subgoal": "retry", "type": "error_recovery", "contribution": 2, "rationale": "validation errors"},
+    {"start_step": 19, "end_step": 20, "subgoal": "report", "type": "completion", "contribution": 3, "rationale": "near-miss"}
+  ],
+  "raw_segments": [],
+  "num_segments": 5,
+  "mean_contribution": 3.4
+}
