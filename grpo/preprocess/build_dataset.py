@@ -2,12 +2,13 @@
 
 CLI:
   python -m grpo.preprocess.build_dataset \
-      --method {vanilla,serpo} \
+      --method {vanilla,serpo,serpo_avg,gigpo} \
       --condition {failonly,full} \
       --outcome-type {binary,continuous} \
       --rollout-dir appworld/experiments/outputs/rollout/round0 \
       --joint-dir rubric_reward/results/rollout \
-      --output-dir grpo/data/round0
+      --output-dir grpo/data/round0 \
+      --tokenizer-name Qwen/Qwen3.5-9B
 
 Output filename: ``{method}_{condition}_{outcome_type}.parquet``.
 
@@ -204,6 +205,8 @@ def run_build(
     tokenizer_name: str = "Qwen/Qwen2.5-7B-Instruct",
     gigpo_kwargs: dict | None = None,
 ) -> None:
+    if method not in ("vanilla", "serpo", "serpo_avg", "gigpo"):
+        raise ValueError(f"unknown method: {method!r}")
     if condition not in ("failonly", "full"):
         raise ValueError(f"unknown condition: {condition!r}")
     if method == "gigpo" and condition == "failonly":
