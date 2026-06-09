@@ -47,3 +47,66 @@ def test_train_step_updates_and_saves(tmp_path):
     assert any(not torch.allclose(before[k], after[k]) for k in before)
     tr.save_adapter(str(tmp_path / "ad"))
     assert (tmp_path / "ad" / "adapter_model.safetensors").exists()
+
+
+def test_nan_loss_skips_optimizer_step(monkeypatch):
+    """A NaN loss from grpo_loss_step must NOT corrupt the in-memory LoRA:
+    opt.step() is skipped, weights unchanged, and metrics flag step_skipped."""
+    tr = OnlineTrainer(model_name="hf-internal-testing/tiny-random-gpt2",
+                       lora_target_modules=["c_attn"], device_map="cpu")
+    before = tr.lora_snapshot()
+
+    def fake_step(model, batch, cfg):
+        return {"loss": float("nan"), "kl_loss": 0.01, "pg_loss": 0.0,
+                "ratio_max": 1.0, "log_ratio_abs_max": 0.0,
+                "resp_tokens": 3, "masked_tokens": 0}
+
+    monkeypatch.setattr("grpo_online.online_trainer.grpo_loss_step", fake_step)
+    stepped = []
+    orig_step = tr.opt.step
+    monkeypatch.setattr(tr.opt, "step",
+                        lambda *a, **k: (stepped.append(1), orig_step(*a, **k)))
+
+    m = tr.train_on_batch(_batch(), K=1)
+    assert m["step_skipped"] is True
+    assert stepped == []  # opt.step never called
+    after = tr.lora_snapshot()
+    assert all(torch.allclose(before[k], after[k]) for k in before)
+
+
+def test_high_masked_fraction_skips_optimizer_step(monkeypatch):
+    tr = OnlineTrainer(model_name="hf-internal-testing/tiny-random-gpt2",
+                       lora_target_modules=["c_attn"], device_map="cpu")
+    before = tr.lora_snapshot()
+
+    def fake_step(model, batch, cfg):
+        # masked_fraction = 90/(10+90) = 0.9 >> default 0.05
+        return {"loss": 0.1, "kl_loss": 0.01, "pg_loss": 0.0,
+                "ratio_max": 1.0, "log_ratio_abs_max": 0.0,
+                "resp_tokens": 10, "masked_tokens": 90}
+
+    monkeypatch.setattr("grpo_online.online_trainer.grpo_loss_step", fake_step)
+    m = tr.train_on_batch(_batch(), K=1)
+    assert m["step_skipped"] is True
+    after = tr.lora_snapshot()
+    assert all(torch.allclose(before[k], after[k]) for k in before)
+
+
+def test_ratio_halt_skips_optimizer_step(monkeypatch):
+    tr = OnlineTrainer(model_name="hf-internal-testing/tiny-random-gpt2",
+                       lora_target_modules=["c_attn"], device_map="cpu")
+    before = tr.lora_snapshot()
+    import math
+
+    def fake_step(model, batch, cfg):
+        # log_ratio_abs_max above log(ratio_halt_threshold) -> halt
+        return {"loss": 0.1, "kl_loss": 0.01, "pg_loss": 0.0,
+                "ratio_max": 999.0,
+                "log_ratio_abs_max": math.log(tr.cfg.ratio_halt_threshold) + 1.0,
+                "resp_tokens": 10, "masked_tokens": 0}
+
+    monkeypatch.setattr("grpo_online.online_trainer.grpo_loss_step", fake_step)
+    m = tr.train_on_batch(_batch(), K=1)
+    assert m["step_skipped"] is True
+    after = tr.lora_snapshot()
+    assert all(torch.allclose(before[k], after[k]) for k in before)

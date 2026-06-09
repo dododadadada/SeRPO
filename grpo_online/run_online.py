@@ -19,7 +19,8 @@ def main():
         kl_beta=cfg.kl_beta, clip_eps=cfg.clip_eps, grad_clip=cfg.grad_clip,
         micro_batch_size=cfg.micro_batch_size, kl_per_token_cap=cfg.kl_per_token_cap,
         outlier_logratio_threshold=cfg.outlier_logratio_threshold,
-        max_masked_fraction=cfg.max_masked_fraction)
+        max_masked_fraction=cfg.max_masked_fraction,
+        ratio_halt_threshold=cfg.ratio_halt_threshold)
     # seed adapter so the gen server has something to load on boot
     trainer.save_adapter(cfg.adapter_dir)
     judge = make_api_judge(cfg)

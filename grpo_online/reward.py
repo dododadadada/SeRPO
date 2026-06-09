@@ -1,10 +1,13 @@
 """Online reward: tokenize new trajectories, score segments via a rubric judge,
 and compute serpo per-segment advantages per task group, in memory."""
 from __future__ import annotations
+import logging
 from collections import defaultdict
 from typing import Any, Callable
 from grpo.preprocess.make_advantages import RolloutData, compute_serpo_advantage
 from grpo.preprocess.tokenize_trajectory import tokenize_trajectory  # patched in tests
+
+logger = logging.getLogger("online")
 
 MAX_TOKENS = 32000
 
@@ -15,14 +18,30 @@ def score_round(items: list[dict[str, Any]], tokenizer,
     judge_fn(lm_calls_path) -> list of {contribution, start_step, end_step}."""
     rds: list[RolloutData] = []
     by_task: dict[str, list[RolloutData]] = defaultdict(list)
+    dropped = {"tokenize": 0, "too_long": 0, "judge": 0}
     for it in items:
+        path = it.get("lm_calls_path")
         try:
-            tok = tokenize_trajectory(it["lm_calls_path"], tokenizer)
-        except Exception:
+            tok = tokenize_trajectory(path, tokenizer)
+        except Exception as e:
+            dropped["tokenize"] += 1
+            logger.warning("dropping %s seed=%s: tokenize failed: %s",
+                           it.get("task_id"), it.get("seed"), e)
             continue
         if len(tok["input_ids"]) > MAX_TOKENS:
+            dropped["too_long"] += 1
+            logger.warning("dropping %s seed=%s: %d tokens > MAX_TOKENS=%d",
+                           it.get("task_id"), it.get("seed"),
+                           len(tok["input_ids"]), MAX_TOKENS)
             continue
-        segments = judge_fn(it["lm_calls_path"])
+        # Judge can be a remote API; a single failure must not abort the round.
+        try:
+            segments = judge_fn(path)
+        except Exception as e:
+            dropped["judge"] += 1
+            logger.warning("dropping %s seed=%s: judge failed: %s",
+                           it.get("task_id"), it.get("seed"), e)
+            continue
         rd = RolloutData(
             task_id=it["task_id"], seed=it["seed"],
             input_ids=tok["input_ids"], attention_mask=tok["attention_mask"],
@@ -30,7 +49,16 @@ def score_round(items: list[dict[str, Any]], tokenizer,
             segments=segments, outcome=float(it.get("outcome", 0.0)),
         )
         by_task[it["task_id"]].append(rd)
+    # Empty task-groups are never created (only successfully-scored items are
+    # appended), so compute_serpo_advantage always gets a non-empty group.
     for group in by_task.values():
         compute_serpo_advantage(group)
         rds.extend(group)
+    total_dropped = sum(dropped.values())
+    if total_dropped:
+        logger.warning(
+            "score_round: dropped %d/%d items (tokenize=%d too_long=%d judge=%d);"
+            " %d scored",
+            total_dropped, len(items), dropped["tokenize"],
+            dropped["too_long"], dropped["judge"], len(rds))
     return rds

@@ -26,6 +26,12 @@ def run_online(cfg, deps: Deps) -> int:
         tasks = sample_tasks(deps.all_tasks, cfg.M, rng)
         items = deps.rollout(rnd, tasks)
         rds = deps.score_round(items, deps.tokenizer, deps.judge)
+        if not rds:
+            logger.warning(
+                "round %d: no scored rollouts (items=%d) — skipping round",
+                rnd, len(items) if items is not None else 0)
+            done = rnd
+            continue
         metrics = deps.trainer.train_on_batch(rds, cfg.K)
         done = rnd
         logger.info("round %d: loss=%.4f kl=%.4f (rds=%d)",

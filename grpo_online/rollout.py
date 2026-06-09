@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger("online")
 
 
 def sample_tasks(all_tasks, M, rng):
@@ -37,12 +40,17 @@ def items_from_outputs(base, seeds, tasks, outcome_type="continuous"):
     success else 0.0.
     """
     items = []
+    skipped = 0
     for s in seeds:
         seed_dir = Path(base) / f"seed_{s}"
         ind = _eval_individual(seed_dir)
         for t in tasks:
             lm = seed_dir / "tasks" / t / "logs" / "lm_calls.jsonl"
             if not lm.exists():
+                skipped += 1
+                logger.warning(
+                    "items_from_outputs: no lm_calls.jsonl for task=%s seed=%s "
+                    "(%s) — skipping", t, s, lm)
                 continue
             rec = ind.get(t, {})
             if outcome_type == "continuous":
@@ -59,6 +67,10 @@ def items_from_outputs(base, seeds, tasks, outcome_type="continuous"):
                     "outcome": outcome,
                 }
             )
+    if skipped:
+        logger.warning(
+            "items_from_outputs: %d (seed,task) pairs had no lm_calls.jsonl; "
+            "%d items collected", skipped, len(items))
     return items
 
 

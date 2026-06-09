@@ -10,6 +10,7 @@ class OnlineConfig:
     K: int = 1
     N_rounds: int = 76
     dataset: str = "train"
+    outcome_type: str = "continuous"  # "continuous" (frac tests passed) | "binary"
     temperature: float = 1.0
     top_p: float = 1.0
     lr: float = 1e-6

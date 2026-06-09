@@ -16,6 +16,9 @@ save_adapter(path) writes the LoRA; lora_snapshot() returns current LoRA tensors
 """
 from __future__ import annotations
 
+import logging
+import math
+
 import torch
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -27,6 +30,8 @@ from grpo.trainer.offline_trainer import (
     shift_for_causal_lm,
 )
 from grpo.trainer.dataset import collate_pad_right
+
+logger = logging.getLogger("online")
 
 
 class OnlineTrainer:
@@ -103,16 +108,69 @@ class OnlineTrainer:
         batch["ref_logp"] = ref
         return batch
 
+    def _should_skip_step(self, metrics) -> str | None:
+        """v3i pre-step guards (mirror offline_trainer.run_training:689-725).
+
+        Returns a human-readable reason string if the optimizer step must be
+        skipped to avoid corrupting the in-memory LoRA, else None. grpo_loss_step
+        returns `loss` as a python float, so isfinite is checked on the float.
+        """
+        # 1) NaN/Inf loss.
+        if not math.isfinite(float(metrics.get("loss", 0.0))):
+            return "non-finite loss (NaN/Inf)"
+        # 2) Masked-fraction guard. grpo_loss_step does not return the fraction
+        #    directly; reconstruct it from masked_tokens / (resp_tokens + masked)
+        #    exactly as the offline loop does (offline_trainer.py:714-725).
+        cap = getattr(self.cfg, "max_masked_fraction", 0.0)
+        if cap > 0:
+            masked = metrics.get("masked_tokens", 0)
+            total = metrics.get("resp_tokens", 0) + masked
+            frac = masked / max(total, 1)
+            if frac > cap:
+                return (f"masked_fraction={frac:.4f} ({masked}/{total}) "
+                        f"exceeded {cap:.4f}")
+        # 3) Ratio halt (offline_trainer.py:702-713): max |log_ratio| vs
+        #    log(ratio_halt_threshold).
+        rht = getattr(self.cfg, "ratio_halt_threshold", 0.0)
+        if rht > 0:
+            lrm = metrics.get("log_ratio_abs_max", 0.0)
+            if lrm > math.log(rht):
+                return (f"max |log_ratio|={lrm:.3f} exceeded "
+                        f"log({rht:g})={math.log(rht):.3f}")
+        return None
+
     def train_on_batch(self, rollouts, K=1):
         batch = self._collate(rollouts)
         metrics: dict = {}
         for _ in range(K):
             self.opt.zero_grad()
             metrics = grpo_loss_step(self.model, batch, self.cfg)
+            skip_reason = self._should_skip_step(metrics)
+            if skip_reason is not None:
+                # Discard the (possibly poisoned) accumulated grads WITHOUT
+                # stepping — a NaN/bad micro-batch must not corrupt the LoRA.
+                self.opt.zero_grad()
+                logger.warning(
+                    "skipping optimizer step: %s "
+                    "(loss=%.4g kl=%.4g ratio_max=%.4g log_ratio_abs_max=%.4g "
+                    "masked=%d/%d)",
+                    skip_reason, float(metrics.get("loss", 0.0)),
+                    float(metrics.get("kl_loss", 0.0)),
+                    float(metrics.get("ratio_max", 0.0)),
+                    float(metrics.get("log_ratio_abs_max", 0.0)),
+                    int(metrics.get("masked_tokens", 0)),
+                    int(metrics.get("resp_tokens", 0))
+                    + int(metrics.get("masked_tokens", 0)),
+                )
+                metrics["step_skipped"] = True
+                # Stop the K-loop: subsequent grad steps would build on the same
+                # diverged batch and the offline trainer halts here too.
+                break
             torch.nn.utils.clip_grad_norm_(
                 [p for p in self.model.parameters() if p.requires_grad],
                 self.cfg.grad_clip)
             self.opt.step()
+            metrics["step_skipped"] = False
         return metrics
 
     def lora_snapshot(self):
