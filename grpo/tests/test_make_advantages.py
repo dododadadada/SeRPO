@@ -236,6 +236,7 @@ def test_discounted_step_returns_terminal_only():
     out = _discounted_step_returns(num_steps=3, outcome=1.0, gamma=0.95)
     assert np.allclose(out, [0.95 ** 2, 0.95, 1.0])
     assert np.allclose(_discounted_step_returns(3, 0.0, 0.95), [0.0, 0.0, 0.0])
+    assert np.allclose(_discounted_step_returns(1, 0.5, 0.95), [0.5])
 
 
 def test_build_step_groups_exact_match():
@@ -248,7 +249,8 @@ def test_build_step_groups_exact_match():
 
 
 def test_build_step_groups_similarity():
-    """Near-identical anchors cluster together when similarity is enabled."""
-    anchors = [["Output: ok aaaa"], ["Output: ok aaab"]]
+    """Near-identical anchors cluster together; dissimilar ones stay separate."""
+    anchors = [["Output: ok aaaa"], ["Output: ok aaab"], ["completely different xyz"]]
     groups = _build_step_groups(anchors, enable_similarity=True, threshold=0.9)
-    assert groups[0][0] == groups[1][0]
+    assert groups[0][0] == groups[1][0]   # near-identical -> same cluster
+    assert groups[2][0] != groups[0][0]   # dissimilar -> different cluster

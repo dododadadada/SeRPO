@@ -91,6 +91,8 @@ def _build_step_groups(
 
     Exact mode: hashmap on _to_hashable(anchor). Similarity mode: greedy
     clustering by SequenceMatcher ratio, matching the GiGPO reference.
+    Similarity-mode clustering compares each anchor to the first representative
+    of each existing cluster, so it is order-dependent (matches the reference).
     """
     if not enable_similarity:
         key_to_id: dict = {}
