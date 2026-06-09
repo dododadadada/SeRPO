@@ -5,6 +5,9 @@ import numpy as np
 
 from grpo.preprocess.make_advantages import (
     RolloutData,
+    _are_similar,
+    _loo_norm,
+    _to_hashable,
     compute_serpo_advantage,
     compute_vanilla_advantage,
 )
@@ -191,3 +194,36 @@ def test_rollout_data_has_step_anchor_obs_default():
         segments=[], outcome=0.0, step_anchor_obs=["obs1"],
     )
     assert r2.step_anchor_obs == ["obs1"]
+
+
+def test_loo_norm_subtracts_mean_only():
+    """leave_one_out mode subtracts the group mean, no division by std."""
+    vals = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    out = _loo_norm(vals, mode="leave_one_out")
+    assert np.allclose(out, [-1.0, 0.0, 1.0])  # mean=2
+
+
+def test_loo_norm_std_mode_divides():
+    """std mode divides by population std."""
+    vals = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    out = _loo_norm(vals, mode="std")
+    expected = (vals - 2.0) / (np.std(vals) + 1e-8)
+    assert np.allclose(out, expected)
+
+
+def test_loo_norm_singleton_is_zero():
+    """A single-element group has zero advantage in both modes (no peers)."""
+    assert np.allclose(_loo_norm(np.array([5.0], dtype=np.float32),
+                                 mode="leave_one_out"), [0.0])
+    assert np.allclose(_loo_norm(np.array([5.0], dtype=np.float32),
+                                 mode="std"), [0.0])
+
+
+def test_to_hashable_strings_and_lists():
+    assert _to_hashable("abc") == "abc"
+    assert _to_hashable(["a", "b"]) == ("a", "b")
+
+
+def test_are_similar_threshold():
+    assert _are_similar("Output: ok", "Output: ok", 0.9) is True
+    assert _are_similar("Output: ok", "totally different text here", 0.9) is False

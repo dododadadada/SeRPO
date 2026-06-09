@@ -6,11 +6,58 @@ onto each rollout's pre-existing token layout (assistant token spans).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any
 
 import numpy as np
 
 EPS = 1e-8
+
+
+def _to_hashable(x):
+    """Convert an observation into a hashable key for anchor-state grouping.
+    Ported from verl-agent gigpo/core_gigpo.py (Apache-2.0)."""
+    if isinstance(x, (int, float, str, bool)):
+        return x
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating):
+        return float(x)
+    if isinstance(x, np.ndarray):
+        return tuple(x.flatten().tolist())
+    if isinstance(x, (list, tuple)):
+        return tuple(_to_hashable(e) for e in x)
+    if isinstance(x, dict):
+        return tuple(sorted((k, _to_hashable(v)) for k, v in x.items()))
+    raise TypeError(f"unhashable observation type: {type(x)}")
+
+
+def _are_similar(a: str, b: str, threshold: float) -> bool:
+    """True if longest-matching-subsequence ratio >= threshold.
+    Ported from verl-agent gigpo/core_gigpo.py (Apache-2.0)."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        raise ValueError("similarity-based grouping supports only str observations")
+    return SequenceMatcher(None, a, b).ratio() >= threshold
+
+
+def _loo_norm(values: np.ndarray, *, mode: str = "leave_one_out") -> np.ndarray:
+    """Normalize a group of scalars by subtracting the group mean.
+
+    mode='leave_one_out' (paper F_norm=1): subtract mean only (a rescaled RLOO;
+      the rescale is absorbed into the learning rate).
+    mode='std' (paper F_norm=std): also divide by population std.
+    A singleton group (len 1) returns 0 (no peers to compare against), matching
+    the GiGPO reference's size-1 handling.
+    """
+    values = np.asarray(values, dtype=np.float32)
+    if values.size <= 1:
+        return np.zeros_like(values)
+    centered = values - float(values.mean())
+    if mode == "leave_one_out":
+        return centered
+    if mode == "std":
+        return centered / (float(values.std()) + EPS)
+    raise ValueError(f"unknown norm mode: {mode!r}")
 
 
 @dataclass
