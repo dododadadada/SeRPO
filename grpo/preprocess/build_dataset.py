@@ -33,7 +33,9 @@ import pyarrow.parquet as pq
 from grpo.preprocess.failset import build_failset
 from grpo.preprocess.make_advantages import (
     RolloutData,
+    compute_gigpo_advantage,
     compute_serpo_advantage,
+    compute_serpo_avg_advantage,
     compute_vanilla_advantage,
 )
 from grpo.preprocess.tokenize_trajectory import tokenize_trajectory
@@ -94,8 +96,8 @@ def _load_outcomes(
 
 
 def _load_joint_records(joint_dir: Path, seed: int) -> dict[str, dict[str, Any]]:
-    """Load joint_seed_N.jsonl into {task_id: record}."""
-    path = joint_dir / f"joint_seed_{seed}.jsonl"
+    """Load seed_N.jsonl into {task_id: record}."""
+    path = joint_dir / f"seed_{seed}.jsonl"
     out: dict[str, dict[str, Any]] = {}
     if not path.exists():
         logger.warning("joint file missing: %s", path)
@@ -116,6 +118,7 @@ def build_dataset_for_task_group(
     tokenizer,
     method: str,
     out_path: Path | None = None,
+    gigpo_kwargs: dict | None = None,
 ) -> int:
     """Process the rollouts of one task group, compute the method's advantage,
     append rows to a parquet file. Returns number of rollouts written, or 0
@@ -149,6 +152,7 @@ def build_dataset_for_task_group(
                 response_mask=tok_result["response_mask"],
                 step_token_ranges=tok_result["step_token_ranges"],
                 segments=joint.get("segments", []),
+                step_anchor_obs=tok_result.get("step_anchor_obs", []),
                 outcome=float(inp["outcome"]),
             )
         )
@@ -157,6 +161,10 @@ def build_dataset_for_task_group(
         compute_vanilla_advantage(rollouts)
     elif method == "serpo":
         compute_serpo_advantage(rollouts)
+    elif method == "serpo_avg":
+        compute_serpo_avg_advantage(rollouts)
+    elif method == "gigpo":
+        compute_gigpo_advantage(rollouts, **(gigpo_kwargs or {}))
     else:
         raise ValueError(f"unknown method: {method}")
 
@@ -194,15 +202,22 @@ def run_build(
     output_dir: Path,
     outcome_type: str = "binary",
     tokenizer_name: str = "Qwen/Qwen2.5-7B-Instruct",
+    gigpo_kwargs: dict | None = None,
 ) -> None:
+    if condition not in ("failonly", "full"):
+        raise ValueError(f"unknown condition: {condition!r}")
+    if method == "gigpo" and condition == "failonly":
+        raise ValueError(
+            "method=gigpo with condition=failonly is degenerate: binary reward "
+            "is 0 for every fail-only rollout, so A^E and A^S are all zero. "
+            "Use condition=full for GiGPO."
+        )
+    if outcome_type not in ("binary", "continuous"):
+        raise ValueError(f"unknown outcome_type: {outcome_type!r}")
+
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-
-    if condition not in ("failonly", "full"):
-        raise ValueError(f"unknown condition: {condition!r}")
-    if outcome_type not in ("binary", "continuous"):
-        raise ValueError(f"unknown outcome_type: {outcome_type!r}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -281,7 +296,7 @@ def run_build(
                     group_ok = False
                     break
                 joint_rec = seed_joints[seed].get(task_id)
-                if joint_rec is None and method == "serpo":
+                if joint_rec is None and method in ("serpo", "serpo_avg"):
                     skip_log.write(
                         json.dumps(
                             {
@@ -314,6 +329,7 @@ def run_build(
 
             written = build_dataset_for_task_group(
                 inputs, tokenizer=tokenizer, method=method, out_path=out_path,
+                gigpo_kwargs=gigpo_kwargs,
             )
             if written == 0:
                 n_skipped_groups += 1
@@ -344,7 +360,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     ap = argparse.ArgumentParser()
-    ap.add_argument("--method", choices=["vanilla", "serpo"], required=True)
+    ap.add_argument("--method", choices=["vanilla", "serpo", "serpo_avg", "gigpo"], required=True)
     ap.add_argument("--condition", choices=["failonly", "full"], default="failonly")
     ap.add_argument(
         "--outcome-type",
@@ -367,10 +383,35 @@ def main() -> None:
         type=Path,
         default=Path("grpo/data/round0"),
     )
+    ap.add_argument(
+        "--tokenizer-name",
+        type=str,
+        default="Qwen/Qwen2.5-7B-Instruct",
+        help="HF tokenizer for input_ids; must match the policy model being trained.",
+    )
+    ap.add_argument("--gamma", type=float, default=0.95,
+                    help="GiGPO discount factor (paper: 0.95).")
+    ap.add_argument("--omega", type=float, default=1.0,
+                    help="GiGPO step-advantage weight (paper: 1.0).")
+    ap.add_argument("--gigpo-norm-mode", choices=["leave_one_out", "std"],
+                    default="leave_one_out",
+                    help="GiGPO normalization (paper F_norm=1 default).")
+    ap.add_argument("--enable-similarity", action="store_true",
+                    help="GiGPO: cluster anchors by similarity instead of exact match.")
+    ap.add_argument("--similarity-thresh", type=float, default=0.9,
+                    help="GiGPO similarity threshold (paper: 0.9).")
     args = ap.parse_args()
+    gigpo_kwargs = {
+        "gamma": args.gamma, "omega": args.omega,
+        "norm_mode": args.gigpo_norm_mode,
+        "enable_similarity": args.enable_similarity,
+        "similarity_thresh": args.similarity_thresh,
+    } if args.method == "gigpo" else None
     run_build(
         args.method, args.condition, args.rollout_dir, args.joint_dir,
         args.output_dir, outcome_type=args.outcome_type,
+        tokenizer_name=args.tokenizer_name,
+        gigpo_kwargs=gigpo_kwargs,
     )
 
 

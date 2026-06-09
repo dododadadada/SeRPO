@@ -92,6 +92,53 @@ def test_build_dataset_serpo_advantages_have_signal(tmp_path, tokenizer):
     assert found_signal, "expected at least one nonzero advantage on an assistant token"
 
 
+def test_gigpo_failonly_is_rejected(tmp_path):
+    from grpo.preprocess.build_dataset import run_build
+    with pytest.raises(ValueError, match="gigpo|failonly"):
+        run_build(
+            method="gigpo",
+            condition="failonly",
+            rollout_dir=tmp_path / "nope",
+            joint_dir=tmp_path / "nope",
+            output_dir=tmp_path / "out",
+            outcome_type="binary",
+        )
+
+
+def test_gigpo_group_produces_nonzero_advantage(tmp_path, tokenizer):
+    """GiGPO over a group with differing outcomes (one success, one fail) yields
+    at least one nonzero per-token advantage (A^E is nonzero under LOO when the
+    group outcomes differ)."""
+    joint = json.loads(FIXTURE_JOINT.read_text())
+    inputs = [
+        {
+            "task_id": "07b42fd_1",
+            "seed": s,
+            "lm_calls_path": FIXTURE_LM_CALLS,
+            "joint_record": joint,
+            "outcome": 1 if s == 1 else 0,  # one success, rest fail
+        }
+        for s in range(1, 9)
+    ]
+    out_path = tmp_path / "gigpo.parquet"
+    n_written = build_dataset_for_task_group(
+        inputs, tokenizer=tokenizer, method="gigpo", out_path=out_path,
+    )
+    assert n_written == 8
+    df = pq.read_table(out_path).to_pandas()
+    found_signal = False
+    for _, row in df.iterrows():
+        adv = list(row["advantages"])
+        rmask = list(row["response_mask"])
+        for a, m in zip(adv, rmask):
+            if m == 1 and abs(a) > 1e-6:
+                found_signal = True
+                break
+        if found_signal:
+            break
+    assert found_signal, "expected at least one nonzero advantage on an assistant token"
+
+
 def test_build_dataset_skips_oversize(tmp_path, tokenizer, monkeypatch):
     """If a tokenized trajectory exceeds MAX_TOKENS, the whole group is dropped."""
     import grpo.preprocess.build_dataset as bd
