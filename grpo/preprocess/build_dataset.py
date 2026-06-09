@@ -31,10 +31,10 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from gigpo.advantage import compute_gigpo_advantage
 from grpo.preprocess.failset import build_failset
 from grpo.preprocess.make_advantages import (
     RolloutData,
-    compute_gigpo_advantage,
     compute_serpo_advantage,
     compute_serpo_avg_advantage,
     compute_vanilla_advantage,
