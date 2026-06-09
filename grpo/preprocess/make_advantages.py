@@ -25,6 +25,9 @@ class RolloutData:
     step_token_ranges: list[tuple[int, int]]
     segments: list[dict[str, Any]]
     outcome: float  # ∈ [0, 1]; binary {0.0, 1.0} or continuous pass_rate
+    # Per-step anchor observation (env-output text preceding each assistant
+    # step). Used only by GiGPO; empty for other methods. Length == num_steps.
+    step_anchor_obs: list[str] = field(default_factory=list)
     token_adv: np.ndarray = field(default=None)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
@@ -69,3 +72,38 @@ def compute_serpo_advantage(rollouts: list[RolloutData]) -> None:
                     continue  # segment refers to nonexistent step
                 tok_start, tok_end = r.step_token_ranges[idx]
                 r.token_adv[tok_start:tok_end] = a_hat
+
+
+def compute_serpo_avg_advantage(rollouts: list[RolloutData]) -> None:
+    """Ablation isolating SeRPO's segment-level PLACEMENT.
+
+    Same rubric contributions as serpo, but collapsed to ONE trajectory reward =
+    token-weighted mean of segment contributions (weight = #tokens in the segment
+    span). Then z-score these trajectory rewards across the group and broadcast
+    uniformly to assistant tokens. Identical reward source + per-token raw total
+    as serpo; only the granularity (per-segment -> trajectory) and the z-score
+    level differ — exactly the segment-vs-trajectory contrast being ablated.
+    """
+    traj: list[float] = []
+    for r in rollouts:
+        num = 0.0
+        den = 0
+        for seg in r.segments:
+            seg_len = 0
+            for k in range(int(seg["start_step"]), int(seg["end_step"]) + 1):
+                idx = k - 1
+                if idx < 0 or idx >= len(r.step_token_ranges):
+                    continue
+                tok_start, tok_end = r.step_token_ranges[idx]
+                seg_len += tok_end - tok_start
+            num += float(seg["contribution"]) * seg_len
+            den += seg_len
+        traj.append(num / den if den > 0 else 0.0)
+    arr = np.asarray(traj, dtype=np.float32)
+    mu = float(arr.mean())
+    sigma = float(arr.std()) + EPS
+    for r, tr in zip(rollouts, traj):
+        scalar = (tr - mu) / sigma
+        mask = np.asarray(r.response_mask, dtype=bool)
+        r.token_adv = np.zeros(len(r.input_ids), dtype=np.float32)
+        r.token_adv[mask] = scalar

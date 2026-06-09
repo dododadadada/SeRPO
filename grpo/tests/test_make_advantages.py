@@ -173,3 +173,21 @@ def test_serpo_segment_spanning_multiple_steps():
         v_step1 = r.token_adv[2]
         v_step2 = r.token_adv[6]
         assert v_step1 == v_step2  # same segment → same advantage
+
+
+def test_rollout_data_has_step_anchor_obs_default():
+    """RolloutData accepts an optional step_anchor_obs, defaulting to empty list."""
+    r = RolloutData(
+        task_id="t", seed=1,
+        input_ids=[0, 1, 2], attention_mask=[1, 1, 1],
+        response_mask=[0, 1, 1], step_token_ranges=[(1, 3)],
+        segments=[], outcome=0.0,
+    )
+    assert r.step_anchor_obs == []
+    r2 = RolloutData(
+        task_id="t", seed=1,
+        input_ids=[0, 1, 2], attention_mask=[1, 1, 1],
+        response_mask=[0, 1, 1], step_token_ranges=[(1, 3)],
+        segments=[], outcome=0.0, step_anchor_obs=["obs1"],
+    )
+    assert r2.step_anchor_obs == ["obs1"]
