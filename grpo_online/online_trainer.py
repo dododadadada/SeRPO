@@ -63,6 +63,21 @@ class OnlineTrainer:
         self.opt = torch.optim.AdamW(
             [p for p in self.model.parameters() if p.requires_grad], lr=lr)
 
+    def _chunked_logprobs(self, inputs, attn, labels, micro):
+        # Qwen3.5's torch-fallback linear attention is batch-size dependent: a
+        # sequence's per-token logp differs when forwarded in a group vs alone.
+        # old_logp/ref_logp MUST be computed with the SAME micro-batch chunking
+        # that grpo_loss_step uses for new_lp, else step-0 PPO ratio != 1 and
+        # training diverges. Mirror offline_trainer.cache_old_and_ref_logprobs.
+        chunks = []
+        B = inputs.size(0)
+        for s in range(0, B, micro):
+            sl = slice(s, s + micro)
+            chunks.append(
+                _forward_logprobs(self.model, inputs[sl], attn[sl], labels[sl]).cpu()
+            )
+        return torch.cat(chunks, dim=0)
+
     def _collate(self, rollouts):
         # collate_pad_right operates on torch tensors (it reads .size(0)/.dtype),
         # but RolloutData carries python lists / a numpy token_adv array, so wrap
@@ -79,10 +94,11 @@ class OnlineTrainer:
         inputs, labels, attn, _, _ = shift_for_causal_lm(
             batch["input_ids"], batch["attention_mask"],
             batch["response_mask"], batch["advantages"])
+        micro = self.cfg.micro_batch_size
         with torch.no_grad():
-            old = _forward_logprobs(self.model, inputs, attn, labels).cpu()
+            old = self._chunked_logprobs(inputs, attn, labels, micro)
             with self.model.disable_adapter():
-                ref = _forward_logprobs(self.model, inputs, attn, labels).cpu()
+                ref = self._chunked_logprobs(inputs, attn, labels, micro)
         batch["old_logp"] = old
         batch["ref_logp"] = ref
         return batch
