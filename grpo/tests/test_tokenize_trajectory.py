@@ -105,10 +105,8 @@ def test_step_anchor_obs(tokenizer, tmp_path):
     assert "step_anchor_obs" in result
     assert len(result["step_anchor_obs"]) == result["num_steps"]
     assert result["num_steps"] == 2
+    assert result["step_anchor_obs"][0] == prefix
     assert "env result 1" in result["step_anchor_obs"][1]
-    assert "Using these APIs, now generate code to solve the actual task:" in (
-        result["step_anchor_obs"][0]
-    )
 
 
 def test_missing_marker_raises(tokenizer, tmp_path):
