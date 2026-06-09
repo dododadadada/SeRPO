@@ -33,7 +33,7 @@ def _to_hashable(x):
 
 
 def _are_similar(a: str, b: str, threshold: float) -> bool:
-    """True if longest-matching-subsequence ratio >= threshold.
+    """True if difflib SequenceMatcher ratio >= threshold.
     Ported from verl-agent gigpo/core_gigpo.py (Apache-2.0)."""
     if not isinstance(a, str) or not isinstance(b, str):
         raise ValueError("similarity-based grouping supports only str observations")
