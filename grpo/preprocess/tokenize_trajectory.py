@@ -36,9 +36,6 @@ PREFIX_MARKER = "Using these APIs, now generate code to solve the actual task:"
 IM_START_TOKEN_ID = 151644
 IM_END_TOKEN_ID = 151645
 
-_IM_START_LEN = len("<|im_start|>")  # 12
-_IM_END_LEN = len("<|im_end|>")  # 10
-
 
 # Qwen3.5-family chat templates inject an empty think block before the final
 # assistant turn's content. Qwen2.5 has no such block.

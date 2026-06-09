@@ -29,4 +29,4 @@ markers = [
     "gpu: tests that require a GPU (skipped by default; run with -m gpu)",
 ]
 addopts = "-m 'not gpu'"
-testpaths = ["grpo/tests"]
+testpaths = ["grpo/tests", "gigpo/tests"]
