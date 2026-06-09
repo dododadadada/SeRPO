@@ -222,3 +222,72 @@ def compute_serpo_avg_advantage(rollouts: list[RolloutData]) -> None:
         mask = np.asarray(r.response_mask, dtype=bool)
         r.token_adv = np.zeros(len(r.input_ids), dtype=np.float32)
         r.token_adv[mask] = scalar
+
+
+def compute_gigpo_advantage(
+    rollouts: list[RolloutData],
+    *,
+    gamma: float = 0.95,
+    omega: float = 1.0,
+    norm_mode: str = "leave_one_out",
+    enable_similarity: bool = False,
+    similarity_thresh: float = 0.9,
+) -> None:
+    """GiGPO advantage (arXiv 2505.10978): A = A^E + omega * A^S.
+
+    A^E: episode-level relative advantage = LOO-normalized binary outcome across
+         the group, broadcast uniformly to a rollout's assistant tokens (Eq. 3).
+    A^S: step-level relative advantage = LOO-normalized discounted step return
+         within each anchor-state group, broadcast to that step's token span
+         (Eqs. 4-8). Anchor = the env-output observation preceding the step.
+
+    Operates on one task's group of rollouts; mutates r.token_adv in place.
+    """
+    # --- A^E: episode advantage (paper Eq. 3) ---
+    outcomes = np.asarray([r.outcome for r in rollouts], dtype=np.float32)
+    ae = _loo_norm(outcomes, mode=norm_mode)  # one scalar per rollout
+
+    # --- anchor-state grouping (paper Eqs. 4, 6) ---
+    anchors_per_rollout = [list(r.step_anchor_obs) for r in rollouts]
+    group_ids = _build_step_groups(
+        anchors_per_rollout,
+        enable_similarity=enable_similarity,
+        threshold=similarity_thresh,
+    )
+
+    # --- discounted step returns (paper Eq. 5, terminal-only) ---
+    step_returns = [
+        _discounted_step_returns(len(r.step_token_ranges), r.outcome, gamma)
+        for r in rollouts
+    ]
+
+    # --- pool step returns by group id, LOO-normalize within group (Eq. 7) ---
+    gid_to_returns: dict[int, list[float]] = {}
+    for i, ids in enumerate(group_ids):
+        for k, gid in enumerate(ids):
+            gid_to_returns.setdefault(gid, []).append(float(step_returns[i][k]))
+    gid_to_mean: dict[int, float] = {}
+    gid_to_std: dict[int, float] = {}
+    for gid, vals in gid_to_returns.items():
+        arr = np.asarray(vals, dtype=np.float32)
+        gid_to_mean[gid] = float(arr.mean())
+        gid_to_std[gid] = float(arr.std())
+
+    # --- write A = A^E + omega * A^S onto tokens ---
+    for i, r in enumerate(rollouts):
+        r.token_adv = np.zeros(len(r.input_ids), dtype=np.float32)
+        mask = np.asarray(r.response_mask, dtype=bool)
+        r.token_adv[mask] = ae[i]
+        ids = group_ids[i]
+        for k, (tok_start, tok_end) in enumerate(r.step_token_ranges):
+            gid = ids[k]
+            n_in_group = len(gid_to_returns[gid])
+            if n_in_group <= 1:
+                a_s = 0.0  # singleton group -> no relative signal
+            else:
+                centered = float(step_returns[i][k]) - gid_to_mean[gid]
+                if norm_mode == "std":
+                    a_s = centered / (gid_to_std[gid] + EPS)
+                else:  # leave_one_out
+                    a_s = centered
+            r.token_adv[tok_start:tok_end] += omega * a_s

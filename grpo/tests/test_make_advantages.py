@@ -10,6 +10,7 @@ from grpo.preprocess.make_advantages import (
     _discounted_step_returns,
     _loo_norm,
     _to_hashable,
+    compute_gigpo_advantage,
     compute_serpo_advantage,
     compute_vanilla_advantage,
 )
@@ -254,3 +255,66 @@ def test_build_step_groups_similarity():
     groups = _build_step_groups(anchors, enable_similarity=True, threshold=0.9)
     assert groups[0][0] == groups[1][0]   # near-identical -> same cluster
     assert groups[2][0] != groups[0][0]   # dissimilar -> different cluster
+
+
+def _mock_gigpo_rollout(outcome, anchors):
+    """2-step rollout: step1 tokens [2:5], step2 tokens [6:8]."""
+    return RolloutData(
+        task_id="t", seed=1,
+        input_ids=list(range(10)), attention_mask=[1] * 10,
+        response_mask=[0, 0, 1, 1, 1, 0, 1, 1, 0, 0],
+        step_token_ranges=[(2, 5), (6, 8)],
+        segments=[], outcome=float(outcome),
+        step_anchor_obs=list(anchors),
+    )
+
+
+def test_gigpo_all_fail_group_is_zero():
+    """All outcomes 0 -> A^E=0 and all step returns 0 -> A^S=0 -> all zero."""
+    rollouts = [_mock_gigpo_rollout(0, ["A", "B"]) for _ in range(8)]
+    compute_gigpo_advantage(rollouts, gamma=0.95, omega=1.0,
+                            norm_mode="leave_one_out")
+    for r in rollouts:
+        assert np.allclose(r.token_adv, 0.0)
+
+
+def test_gigpo_zero_outside_assistant():
+    """response_mask=0 positions stay zero."""
+    rollouts = [_mock_gigpo_rollout(1 if i < 2 else 0, ["A", "B"])
+                for i in range(8)]
+    compute_gigpo_advantage(rollouts, gamma=0.95, omega=1.0,
+                            norm_mode="leave_one_out")
+    for r in rollouts:
+        for i, m in enumerate(r.response_mask):
+            if m == 0:
+                assert r.token_adv[i] == 0.0
+
+
+def test_gigpo_additive_episode_plus_step():
+    """token_adv on a step = A^E + omega*A^S; verify against hand computation."""
+    rollouts = [_mock_gigpo_rollout(1 if i < 2 else 0, ["A", "B"])
+                for i in range(8)]
+    compute_gigpo_advantage(rollouts, gamma=0.95, omega=1.0,
+                            norm_mode="leave_one_out")
+    outcomes = np.array([1, 1, 0, 0, 0, 0, 0, 0], dtype=np.float32)
+    ae = outcomes - outcomes.mean()  # leave_one_out
+    g = 0.95
+    step1_returns = np.array([g * o for o in outcomes], dtype=np.float32)
+    step2_returns = np.array([1.0 * o for o in outcomes], dtype=np.float32)
+    as1 = step1_returns - step1_returns.mean()
+    as2 = step2_returns - step2_returns.mean()
+    for idx, r in enumerate(rollouts):
+        assert np.isclose(r.token_adv[2], ae[idx] + 1.0 * as1[idx], atol=1e-5)
+        assert np.isclose(r.token_adv[6], ae[idx] + 1.0 * as2[idx], atol=1e-5)
+
+
+def test_gigpo_singleton_step_group_has_zero_step_adv():
+    """A step whose anchor is unique (group size 1) gets A^S=0, so token_adv == A^E."""
+    rollouts = [_mock_gigpo_rollout(1 if i < 2 else 0,
+                                    ["A", "UNIQUE" if i == 0 else "B"])
+                for i in range(8)]
+    compute_gigpo_advantage(rollouts, gamma=0.95, omega=1.0,
+                            norm_mode="leave_one_out")
+    outcomes = np.array([1, 1, 0, 0, 0, 0, 0, 0], dtype=np.float32)
+    ae0 = outcomes[0] - outcomes.mean()
+    assert np.isclose(rollouts[0].token_adv[6], ae0, atol=1e-5)
