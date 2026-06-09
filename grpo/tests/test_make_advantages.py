@@ -6,6 +6,8 @@ import numpy as np
 from grpo.preprocess.make_advantages import (
     RolloutData,
     _are_similar,
+    _build_step_groups,
+    _discounted_step_returns,
     _loo_norm,
     _to_hashable,
     compute_serpo_advantage,
@@ -227,3 +229,26 @@ def test_to_hashable_strings_and_lists():
 def test_are_similar_threshold():
     assert _are_similar("Output: ok", "Output: ok", 0.9) is True
     assert _are_similar("Output: ok", "totally different text here", 0.9) is False
+
+
+def test_discounted_step_returns_terminal_only():
+    """R_k = gamma^(N-k) * outcome for terminal-only reward, k=1..N (1-indexed)."""
+    out = _discounted_step_returns(num_steps=3, outcome=1.0, gamma=0.95)
+    assert np.allclose(out, [0.95 ** 2, 0.95, 1.0])
+    assert np.allclose(_discounted_step_returns(3, 0.0, 0.95), [0.0, 0.0, 0.0])
+
+
+def test_build_step_groups_exact_match():
+    """Steps with identical anchor strings get the same group id."""
+    anchors = [["A", "B"], ["A", "C"]]
+    groups = _build_step_groups(anchors, enable_similarity=False, threshold=0.9)
+    assert groups[0][0] == groups[1][0]      # both "A"
+    assert groups[0][1] != groups[0][0]      # "B" different from "A"
+    assert groups[0][1] != groups[1][1]      # "B" != "C"
+
+
+def test_build_step_groups_similarity():
+    """Near-identical anchors cluster together when similarity is enabled."""
+    anchors = [["Output: ok aaaa"], ["Output: ok aaab"]]
+    groups = _build_step_groups(anchors, enable_similarity=True, threshold=0.9)
+    assert groups[0][0] == groups[1][0]

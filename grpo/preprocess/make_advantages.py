@@ -60,6 +60,72 @@ def _loo_norm(values: np.ndarray, *, mode: str = "leave_one_out") -> np.ndarray:
     raise ValueError(f"unknown norm mode: {mode!r}")
 
 
+def _discounted_step_returns(
+    num_steps: int, outcome: float, gamma: float,
+) -> np.ndarray:
+    """Terminal-only discounted return-to-go per step (paper Eq. 5 specialized
+    to a single terminal reward). Step k (1-indexed) of an N-step trajectory:
+    R_k = gamma^(N-k) * outcome. Returns array of length num_steps (index 0 = step 1).
+
+    NOTE: this is the AppWorld-offline simplification documented in the spec —
+    the paper's real step return also carries per-step invalid-action penalties,
+    which the frozen binary rollouts do not provide.
+    """
+    if num_steps <= 0:
+        return np.zeros(0, dtype=np.float32)
+    exps = np.arange(num_steps - 1, -1, -1, dtype=np.float32)  # [N-1, ..., 1, 0]
+    return (gamma ** exps) * float(outcome)
+
+
+def _build_step_groups(
+    anchors_per_rollout: list[list[str]],
+    *,
+    enable_similarity: bool,
+    threshold: float,
+) -> list[list[int]]:
+    """Anchor-state grouping (paper Eqs. 4, 6) across one task's rollouts.
+
+    Input: anchors_per_rollout[i] = list of anchor strings for rollout i's steps.
+    Output: same nested shape, each step replaced by an integer group id; steps
+    sharing an anchor (exact, or similarity >= threshold) get the same id.
+
+    Exact mode: hashmap on _to_hashable(anchor). Similarity mode: greedy
+    clustering by SequenceMatcher ratio, matching the GiGPO reference.
+    """
+    if not enable_similarity:
+        key_to_id: dict = {}
+        out: list[list[int]] = []
+        next_id = 0
+        for anchors in anchors_per_rollout:
+            ids = []
+            for a in anchors:
+                key = _to_hashable(a)
+                if key not in key_to_id:
+                    key_to_id[key] = next_id
+                    next_id += 1
+                ids.append(key_to_id[key])
+            out.append(ids)
+        return out
+
+    # Similarity mode: greedy representative clustering.
+    reps: list[str] = []
+    out = []
+    for anchors in anchors_per_rollout:
+        ids = []
+        for a in anchors:
+            gid = None
+            for j, rep in enumerate(reps):
+                if _are_similar(a, rep, threshold):
+                    gid = j
+                    break
+            if gid is None:
+                gid = len(reps)
+                reps.append(a)
+            ids.append(gid)
+        out.append(ids)
+    return out
+
+
 @dataclass
 class RolloutData:
     """One rollout's preprocessed view, mutated in-place by advantage funcs."""
