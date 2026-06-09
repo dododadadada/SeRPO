@@ -67,6 +67,50 @@ def test_decoded_step1_contains_known_token(tokenizer):
     assert "spotify" in decoded_lower or "supervisor" in decoded_lower
 
 
+def test_step_anchor_obs(tokenizer, tmp_path):
+    """tokenize_trajectory should emit one anchor obs string per assistant step:
+    the content of the message immediately preceding that step. First step's
+    anchor is the task-instruction prefix message."""
+    prefix = (
+        "Here are some APIs.\n"
+        "Using these APIs, now generate code to solve the actual task:\n"
+        "Find my playlists."
+    )
+    lm_calls = tmp_path / "lm_calls.jsonl"
+    lm_calls.write_text(
+        json.dumps(
+            {
+                "input": {
+                    "messages": [
+                        {"role": "user", "content": prefix},
+                        {"role": "assistant", "content": "print('step 1 code')"},
+                        {"role": "user", "content": "Output:\n```\nenv result 1\n```"},
+                    ]
+                },
+                "output": {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "print('step 2 code')",
+                            }
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n"
+    )
+    result = tokenize_trajectory(lm_calls, tokenizer)
+    assert "step_anchor_obs" in result
+    assert len(result["step_anchor_obs"]) == result["num_steps"]
+    assert result["num_steps"] == 2
+    assert "env result 1" in result["step_anchor_obs"][1]
+    assert "Using these APIs, now generate code to solve the actual task:" in (
+        result["step_anchor_obs"][0]
+    )
+
+
 def test_missing_marker_raises(tokenizer, tmp_path):
     """If the prefix marker is missing, raise ValueError."""
     bad = tmp_path / "bad.jsonl"

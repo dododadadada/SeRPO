@@ -40,11 +40,16 @@ _IM_START_LEN = len("<|im_start|>")  # 12
 _IM_END_LEN = len("<|im_end|>")  # 10
 
 
-def _extract_default_system_content(tokenizer) -> str:
+# Qwen3.5-family chat templates inject an empty think block before the final
+# assistant turn's content. Qwen2.5 has no such block.
+_THINK_BLOCK_LEN = len("<think>\n\n</think>\n\n")
+
+
+def _extract_default_system_content(tokenizer) -> str | None:
     """Return the system-message content that the tokenizer's chat template
     injects when the messages list does not start with a system message. Qwen2.5
     injects 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'.
-    Other Qwen-family models may differ."""
+    Returns None if the template injects no default system message (e.g. Qwen3.5)."""
     rendered = tokenizer.apply_chat_template(
         [{"role": "user", "content": "x"}],
         tokenize=False,
@@ -54,9 +59,7 @@ def _extract_default_system_content(tokenizer) -> str:
         r"<\|im_start\|>system\n(.*?)<\|im_end\|>", rendered, re.DOTALL
     )
     if m is None:
-        raise RuntimeError(
-            "could not extract default system content from chat template render"
-        )
+        return None
     return m.group(1)
 
 
@@ -119,6 +122,10 @@ def tokenize_trajectory(lm_calls_path: Path, tokenizer) -> dict[str, Any]:
       attention_mask: list[int]   (all 1)
       response_mask:  list[int]   (1 on assistant tokens of steps 1..N only)
       step_token_ranges: list[(start, end)]  (length = num_steps)
+      step_anchor_obs: list[str]  (length = num_steps; per-step the content of
+                                   the message immediately preceding that step's
+                                   assistant message — the task-instruction
+                                   prefix for step 1, the env-output for later)
       num_steps:      int
     """
     lm_calls_path = Path(lm_calls_path)
@@ -137,35 +144,26 @@ def tokenize_trajectory(lm_calls_path: Path, tokenizer) -> dict[str, Any]:
     #    and lets us account for the injected tokens deterministically.
     if not messages or messages[0].get("role") != "system":
         default_sys = _extract_default_system_content(tokenizer)
-        augmented = [{"role": "system", "content": default_sys}] + list(messages)
-        prefix_end = prefix_end_orig + 1
+        if default_sys is None:
+            # Template injects no default system message (e.g. Qwen3.5) —
+            # use the messages as-is, no augmentation.
+            augmented = list(messages)
+            prefix_end = prefix_end_orig
+        else:
+            augmented = [{"role": "system", "content": default_sys}] + list(messages)
+            prefix_end = prefix_end_orig + 1
     else:
         augmented = list(messages)
         prefix_end = prefix_end_orig
 
-    # 2. Compute char boundaries deterministically.
-    char_boundaries: list[int] = []
-    char_pos = 0
-    for m in augmented:
-        char_boundaries.append(char_pos)
-        # Each message: <|im_start|>{role}\n{content}<|im_end|>\n
-        char_pos += (
-            _IM_START_LEN + len(m["role"]) + 1
-            + len(m["content"])
-            + _IM_END_LEN + 1
-        )
-
-    # 3. Render the chat once and verify length matches our accounting.
+    # 2. Render the chat once and tokenize with offset mapping. Rather than
+    #    assuming a rigid per-message char layout (which varies across chat
+    #    templates — e.g. Qwen3.5 strips trailing whitespace from content and
+    #    injects an empty think block on the final assistant turn), we locate
+    #    each message's content text directly in the rendered string.
     chat_str = tokenizer.apply_chat_template(
         augmented, tokenize=False, add_generation_prompt=False,
     )
-    if len(chat_str) != char_pos:
-        raise RuntimeError(
-            f"char accounting mismatch: computed {char_pos}, "
-            f"actual chat_str len {len(chat_str)}"
-        )
-
-    # 4. Tokenize once with offset_mapping so we can map char→token positions.
     enc = tokenizer(
         chat_str,
         return_offsets_mapping=True,
@@ -174,28 +172,48 @@ def tokenize_trajectory(lm_calls_path: Path, tokenizer) -> dict[str, Any]:
     input_ids = list(enc["input_ids"])
     offsets = enc["offset_mapping"]
 
-    # 5. Map each char boundary to the FIRST token whose char span starts at
-    #    or after that boundary. Single linear sweep across offsets.
-    msg_token_starts: list[int] = []
-    j = 0
-    for cb in char_boundaries:
-        while j < len(offsets) and offsets[j][0] < cb:
-            j += 1
-        msg_token_starts.append(j)
-    msg_token_starts.append(len(input_ids))  # sentinel for last message's end
+    def _char_to_token(char_idx: int, *, start: bool) -> int:
+        """First token index at/after char_idx. start=True maps a span start
+        (token whose span starts >= char_idx); used for both ends."""
+        lo, hi = 0, len(offsets)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if offsets[mid][0] < char_idx:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
 
-    # 6. Build response_mask and step_token_ranges. Skip messages in prefix.
+    # 3. Walk messages in order; locate each content in chat_str with a moving
+    #    cursor. Mark assistant tokens of steps 1..N (i.e. after the prefix).
     response_mask = [0] * len(input_ids)
     step_ranges: list[tuple[int, int]] = []
+    step_anchor_obs: list[str] = []
+    cursor = 0
+    prev_content = ""  # content of the message immediately before current
     for i, msg in enumerate(augmented):
-        if i <= prefix_end:
+        content = msg.get("content", "")
+        target = content.rstrip()
+        if not target:
             continue
-        start = msg_token_starts[i]
-        end = msg_token_starts[i + 1]
-        if msg.get("role") == "assistant":
-            for k in range(start, end):
+        pos = chat_str.find(target, cursor)
+        if pos < 0:
+            pos = chat_str.find(content, cursor)
+            target = content
+        if pos < 0:
+            raise RuntimeError(
+                f"message {i} ({msg.get('role')}) content not found in render"
+            )
+        cstart, cend = pos, pos + len(target)
+        cursor = cend
+        if i > prefix_end and msg.get("role") == "assistant":
+            tstart = _char_to_token(cstart, start=True)
+            tend = _char_to_token(cend, start=True)
+            for k in range(tstart, tend):
                 response_mask[k] = 1
-            step_ranges.append((start, end))
+            step_ranges.append((tstart, tend))
+            step_anchor_obs.append(prev_content)
+        prev_content = content
 
     if len(input_ids) != len(response_mask):
         raise RuntimeError(
@@ -207,5 +225,6 @@ def tokenize_trajectory(lm_calls_path: Path, tokenizer) -> dict[str, Any]:
         "attention_mask": [1] * len(input_ids),
         "response_mask": response_mask,
         "step_token_ranges": step_ranges,
+        "step_anchor_obs": step_anchor_obs,
         "num_steps": len(step_ranges),
     }
