@@ -1,4 +1,4 @@
-"""Compute per-token advantage tensors for Vanilla GRPO and SeRPO.
+"""Compute per-token advantage tensors for Vanilla GRPO, SeRPO, and GiGPO.
 
 Both operate on a per-task group of 8 rollouts. The advantage is broadcast
 onto each rollout's pre-existing token layout (assistant token spans).
@@ -271,7 +271,8 @@ def compute_gigpo_advantage(
     for gid, vals in gid_to_returns.items():
         arr = np.asarray(vals, dtype=np.float32)
         gid_to_mean[gid] = float(arr.mean())
-        gid_to_std[gid] = float(arr.std())
+        if norm_mode == "std":
+            gid_to_std[gid] = float(arr.std())
 
     # --- write A = A^E + omega * A^S onto tokens ---
     for i, r in enumerate(rollouts):

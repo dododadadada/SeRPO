@@ -280,6 +280,9 @@ def test_gigpo_all_fail_group_is_zero():
 
 def test_gigpo_zero_outside_assistant():
     """response_mask=0 positions stay zero."""
+    # NOTE: this relies on the tokenizer contract that step_token_ranges are
+    # strict subsets of assistant spans (response_mask==1), so the per-step
+    # A^S write never lands on a response_mask==0 token.
     rollouts = [_mock_gigpo_rollout(1 if i < 2 else 0, ["A", "B"])
                 for i in range(8)]
     compute_gigpo_advantage(rollouts, gamma=0.95, omega=1.0,
