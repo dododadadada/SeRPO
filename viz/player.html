@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AppWorld — Vanilla vs SeRPO</title>
+  <link rel="stylesheet" href="player.css">
+</head>
+<body>
+  <section id="selector">
+    <h1>AppWorld Agent — Vanilla GRPO vs SeRPO</h1>
+    <p class="sub">Pick a task. Both models play side-by-side: Vanilla fails, SeRPO succeeds.</p>
+    <div id="task-cards"></div>
+  </section>
+
+  <section id="stage" hidden>
+    <div id="controls">
+      <button id="back">← tasks</button>
+      <button id="playpause">⏸ Pause</button>
+      <button id="restart">⟲ Restart</button>
+      <label>Speed
+        <select id="speed">
+          <option value="2000">0.5×</option>
+          <option value="1000" selected>1×</option>
+          <option value="500">2×</option>
+          <option value="250">4×</option>
+        </select>
+      </label>
+      <span id="task-instruction"></span>
+    </div>
+    <div id="panels">
+      <div class="panel vanilla">
+        <div class="panel-head">✗ Vanilla GRPO</div>
+        <div class="panel-body">
+          <div class="chat" data-role="chat"></div>
+          <div class="appui" data-role="appui"></div>
+        </div>
+      </div>
+      <div class="panel serpo">
+        <div class="panel-head">✓ SeRPO</div>
+        <div class="panel-body">
+          <div class="chat" data-role="chat"></div>
+          <div class="appui" data-role="appui"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="player.js"></script>
+</body>
+</html>
