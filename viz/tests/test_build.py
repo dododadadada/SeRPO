@@ -11,6 +11,10 @@ def test_passed_from_report_false():
     assert passed_from_report(md) is False
 
 
+def test_passed_from_report_none_when_line_absent():
+    assert passed_from_report("Num Total Tests : 5\n") is None
+
+
 def test_build_step_records_threads_prev_state():
     io = (
         "\n### Environment Interaction 1\n---\n```python\n"
