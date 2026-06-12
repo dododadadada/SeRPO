@@ -34,6 +34,7 @@ async function initSelector() {
 }
 
 async function startTask(taskId) {
+  if (timer) { clearTimeout(timer); timer = null; }
   const vanilla = await loadJSON(`data/${taskId}.vanilla.json`);
   const serpo = await loadJSON(`data/${taskId}.serpo.json`);
   current = { vanilla, serpo, maxSteps: Math.max(vanilla.num_steps, serpo.num_steps) };
@@ -98,7 +99,7 @@ function renderStep(model, doc) {
 
   const agent = document.createElement('div');
   agent.className = 'bubble agent';
-  agent.innerHTML = `<div class="who">🤖 Agent — step ${step.step}</div>` +
+  agent.innerHTML = `<div class="who">🤖 Agent — step ${escapeHtml(step.step)}</div>` +
                     `<code class="mono">${escapeHtml(step.code)}</code>`;
   chat.appendChild(agent);
 
@@ -152,6 +153,7 @@ function maybeDoneBanner(model, doc) {
 }
 
 function tick() {
+  timer = null;
   renderStep('vanilla', current.vanilla);
   renderStep('serpo', current.serpo);
   stepIndex++;
@@ -181,7 +183,11 @@ function wireControls() {
   document.getElementById('playpause').onclick = (e) => {
     paused = !paused;
     e.target.textContent = paused ? '▶ Play' : '⏸ Pause';
-    if (!paused && !timer) scheduleNext();
+    if (paused) {
+      if (timer) { clearTimeout(timer); timer = null; }
+    } else if (!timer) {
+      scheduleNext();
+    }
   };
   document.getElementById('restart').onclick = () => {
     if (current) startTask(current.vanilla.task_id);
