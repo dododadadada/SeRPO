@@ -21,9 +21,9 @@ def derive_ui_state(app: str | None, api: str | None, output: str,
                     prev: dict | None) -> dict:
     # Pure-compute / no-API step: screen does not change.
     if app is None:
-        return prev if prev is not None else _IDLE
+        return prev if prev is not None else dict(_IDLE)
     if api is None:
-        return prev if prev is not None else _IDLE
+        return prev if prev is not None else dict(_IDLE)
 
     if app == "api_docs":
         return {"kind": "docs", "title": "📖 Reading API docs"}

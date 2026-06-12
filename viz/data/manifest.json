@@ -1,0 +1,20 @@
+[
+ {
+  "task_id": "552869a_2",
+  "app": "venmo",
+  "instruction": "How much have I paid in electricity bill on venmo this year so far?",
+  "vanilla_passed": false,
+  "vanilla_num_steps": 50,
+  "serpo_passed": true,
+  "serpo_num_steps": 8
+ },
+ {
+  "task_id": "31dc501_2",
+  "app": "phone",
+  "instruction": "Set my weekend wake up alarm snooze to 15 minutes.",
+  "vanilla_passed": false,
+  "vanilla_num_steps": 8,
+  "serpo_passed": true,
+  "serpo_num_steps": 11
+ }
+]
