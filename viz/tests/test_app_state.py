@@ -46,3 +46,37 @@ def test_complete_task_is_result():
     st = derive_ui_state(app="supervisor", api="complete_task",
                          output="Execution successful.", prev=None)
     assert st["kind"] == "result"
+
+
+def test_phone_show_alarms_renders_rows():
+    out = json.dumps([
+        {"alarm_id": 1, "label": "Weekend wake up", "time": "08:00",
+         "snooze_minutes": 5, "enabled": True},
+        {"alarm_id": 2, "label": "Workday", "time": "06:30",
+         "snooze_minutes": 10, "enabled": True},
+    ])
+    st = derive_ui_state(app="phone", api="show_alarms", output=out, prev=None)
+    assert st["kind"] == "phone_alarms"
+    assert len(st["rows"]) == 2
+    assert st["rows"][0]["label"] == "Weekend wake up"
+    assert st["rows"][0]["snooze_minutes"] == 5
+
+
+def test_phone_update_alarm_marks_changed():
+    prev = {"kind": "phone_alarms", "title": "Phone — alarms", "rows": [
+        {"alarm_id": 1, "label": "Weekend wake up", "time": "08:00",
+         "snooze_minutes": 5, "enabled": True},
+    ]}
+    out = json.dumps({"alarm_id": 1, "label": "Weekend wake up",
+                      "time": "08:00", "snooze_minutes": 15, "enabled": True})
+    st = derive_ui_state(app="phone", api="update_alarm", output=out, prev=prev)
+    assert st["kind"] == "phone_alarms"
+    row = next(r for r in st["rows"] if r["alarm_id"] == 1)
+    assert row["snooze_minutes"] == 15
+    assert row["changed"] is True
+
+
+def test_venmo_show_transactions_bad_json_yields_empty_rows():
+    st = derive_ui_state(app="venmo", api="show_transactions", output="not json", prev=None)
+    assert st["kind"] == "venmo_transactions"
+    assert st["rows"] == []
