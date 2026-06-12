@@ -1,13 +1,50 @@
 """Derive a mock-app UI state from a single trajectory step.
 
-Pure functions: derive_ui_state(app, api, output, prev) -> dict.
+Pure functions: derive_ui_state(app, api, output, prev, code="") -> dict.
 Mapped for venmo + phone; everything else falls back to a generic 'api_call' state.
 A step that calls no API (app is None) leaves the screen unchanged (returns prev).
 """
 import json
+import re
 from typing import Any
 
 _IDLE: dict = {"kind": "idle", "title": ""}
+
+_ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(-?\d+)\s*$", re.MULTILINE)
+_KWARG_RE_TMPL = r"{name}\s*=\s*([A-Za-z_]\w*|-?\d+)"
+
+
+def _resolve_int_kwarg(code: str, kwarg: str) -> int | None:
+    """Find `kwarg=<value>` in code; value may be an int literal or a variable
+    name previously assigned `var = <int>`. Returns the int or None."""
+    if not code:
+        return None
+    assigns = {m.group(1): int(m.group(2)) for m in _ASSIGN_RE.finditer(code)}
+    m = re.search(_KWARG_RE_TMPL.format(name=re.escape(kwarg)), code)
+    if not m:
+        return None
+    token = m.group(1)
+    if re.fullmatch(r"-?\d+", token):
+        return int(token)
+    return assigns.get(token)
+
+
+def _parse_answer(code: str):
+    """Extract the answer=... literal from a complete_task(...) call. Returns a
+    string form suitable for display, or None. Handles numbers and quoted strings."""
+    if not code:
+        return None
+    m = re.search(r"complete_task\(\s*answer\s*=\s*(.+?)\s*\)\s*$", code, re.DOTALL)
+    if not m:
+        # answer may not be the only/last arg; try a looser match
+        m = re.search(r"answer\s*=\s*([^,)\n]+)", code)
+        if not m:
+            return None
+    val = m.group(1).strip()
+    # strip surrounding quotes if a string literal
+    if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
+        val = val[1:-1]
+    return val
 
 
 def _try_json(output: str) -> Any:
@@ -18,7 +55,7 @@ def _try_json(output: str) -> Any:
 
 
 def derive_ui_state(app: str | None, api: str | None, output: str,
-                    prev: dict | None) -> dict:
+                    prev: dict | None, code: str = "") -> dict:
     # Pure-compute / no-API step: screen does not change.
     if app is None:
         return prev if prev is not None else dict(_IDLE)
@@ -29,12 +66,16 @@ def derive_ui_state(app: str | None, api: str | None, output: str,
         return {"kind": "docs", "title": "📖 Reading API docs"}
 
     if api == "complete_task":
-        return {"kind": "result", "title": "✅ Task submitted"}
+        ans = _parse_answer(code)
+        st = {"kind": "result", "title": "✅ Task submitted"}
+        if ans is not None and ans != "None":
+            st["answer"] = ans
+        return st
 
     if app == "venmo":
         return _venmo(api, output, prev)
     if app == "phone":
-        return _phone(api, output, prev)
+        return _phone(api, output, prev, code)
 
     # Generic fallback for any unmapped (app, api).
     return {"kind": "api_call", "title": f"⚙️ {app}.{api}()"}
@@ -60,7 +101,7 @@ def _venmo(api: str | None, output: str, prev: dict | None) -> dict:
     return {"kind": "api_call", "title": f"⚙️ venmo.{api}()"}
 
 
-def _phone(api: str | None, output: str, prev: dict | None) -> dict:
+def _phone(api: str | None, output: str, prev: dict | None, code: str = "") -> dict:
     if api == "login":
         return {"kind": "login", "title": "Phone — signed in"}
     if api == "show_alarms":
@@ -78,25 +119,20 @@ def _phone(api: str | None, output: str, prev: dict | None) -> dict:
                 })
         return {"kind": "phone_alarms", "title": "Phone — alarms", "rows": rows}
     if api == "update_alarm":
-        updated = _try_json(output)
         prev_rows = (prev or {}).get("rows", []) if isinstance(prev, dict) else []
         rows = [dict(r) for r in prev_rows]  # shallow copy
-        if isinstance(updated, dict):
-            uid = updated.get("alarm_id")
-            found = False
-            for r in rows:
-                r["changed"] = False
-                if r.get("alarm_id") == uid:
-                    r["snooze_minutes"] = updated.get("snooze_minutes",
-                                                       r.get("snooze_minutes"))
-                    r["changed"] = True
-                    found = True
-            if not found and uid is not None:
-                rows.append({
-                    "alarm_id": uid, "label": updated.get("label", ""),
-                    "time": updated.get("time", ""),
-                    "snooze_minutes": updated.get("snooze_minutes"),
-                    "enabled": updated.get("enabled", True), "changed": True,
-                })
+
+        # Parse alarm_id and snooze_minutes from code (not env output).
+        target_id = _resolve_int_kwarg(code, "alarm_id")
+        new_snooze = _resolve_int_kwarg(code, "snooze_minutes")
+
+        # Reset changed flag on all rows, then update the matched row.
+        for r in rows:
+            r["changed"] = False
+            if target_id is not None and r.get("alarm_id") == target_id:
+                if new_snooze is not None:
+                    r["snooze_minutes"] = new_snooze
+                r["changed"] = True
+
         return {"kind": "phone_alarms", "title": "Phone — alarms", "rows": rows}
     return {"kind": "api_call", "title": f"⚙️ phone.{api or '?'}()"}

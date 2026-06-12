@@ -65,11 +65,11 @@ def test_phone_show_alarms_renders_rows():
 def test_phone_update_alarm_marks_changed():
     prev = {"kind": "phone_alarms", "title": "Phone — alarms", "rows": [
         {"alarm_id": 1, "label": "Weekend wake up", "time": "08:00",
-         "snooze_minutes": 5, "enabled": True},
+         "snooze_minutes": 5, "enabled": True, "changed": False},
     ]}
-    out = json.dumps({"alarm_id": 1, "label": "Weekend wake up",
-                      "time": "08:00", "snooze_minutes": 15, "enabled": True})
-    st = derive_ui_state(app="phone", api="update_alarm", output=out, prev=prev)
+    code = "apis.phone.update_alarm(alarm_id=1, snooze_minutes=15)"
+    st = derive_ui_state(app="phone", api="update_alarm",
+                         output="Alarm updated successfully.", prev=prev, code=code)
     assert st["kind"] == "phone_alarms"
     row = next(r for r in st["rows"] if r["alarm_id"] == 1)
     assert row["snooze_minutes"] == 15
@@ -80,3 +80,44 @@ def test_venmo_show_transactions_bad_json_yields_empty_rows():
     st = derive_ui_state(app="venmo", api="show_transactions", output="not json", prev=None)
     assert st["kind"] == "venmo_transactions"
     assert st["rows"] == []
+
+
+def test_resolve_int_kwarg_literal_and_variable():
+    from viz.app_state import _resolve_int_kwarg
+    code = "x = 394\nnew = 15\napis.phone.update_alarm(alarm_id=x, snooze_minutes=15)"
+    assert _resolve_int_kwarg(code, "alarm_id") == 394
+    assert _resolve_int_kwarg(code, "snooze_minutes") == 15
+
+
+def test_parse_answer_number_and_string():
+    from viz.app_state import _parse_answer
+    assert _parse_answer("apis.supervisor.complete_task(answer=144.0)") == "144.0"
+    assert _parse_answer('apis.supervisor.complete_task(answer="hello")') == "hello"
+
+
+def test_complete_task_includes_answer():
+    st = derive_ui_state(app="supervisor", api="complete_task",
+                         output="Execution successful.", prev=None,
+                         code="apis.supervisor.complete_task(answer=144.0)")
+    assert st["kind"] == "result"
+    assert st["answer"] == "144.0"
+
+
+def test_update_alarm_uses_code_args():
+    prev = {"kind": "phone_alarms", "title": "Phone — alarms", "rows": [
+        {"alarm_id": 393, "label": "Wake Up", "time": "08:30", "snooze_minutes": 10,
+         "enabled": True, "changed": False},
+        {"alarm_id": 394, "label": "Wake Up", "time": "09:30", "snooze_minutes": 10,
+         "enabled": True, "changed": False},
+    ]}
+    code = ("weekend_alarm_id = 394\nnew_snooze_minutes = 15\n"
+            "apis.phone.update_alarm(access_token=t, alarm_id=weekend_alarm_id, "
+            "snooze_minutes=new_snooze_minutes)")
+    st = derive_ui_state(app="phone", api="update_alarm",
+                         output="Alarm updated successfully.", prev=prev, code=code)
+    row = next(r for r in st["rows"] if r["alarm_id"] == 394)
+    assert row["snooze_minutes"] == 15
+    assert row["changed"] is True
+    other = next(r for r in st["rows"] if r["alarm_id"] == 393)
+    assert other["changed"] is False
+    assert other["snooze_minutes"] == 10

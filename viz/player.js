@@ -135,7 +135,8 @@ function renderAppUI(model, ui) {
         <b>snooze ${escapeHtml(r.snooze_minutes)}m</b></div>`;
     }
   } else if (ui.kind === 'result') {
-    html += `<div class="result-card">Task submitted</div>`;
+    const ans = ui.answer != null ? ` — answer: ${escapeHtml(ui.answer)}` : '';
+    html += `<div class="result-card">Task submitted${ans}</div>`;
   } else if (ui.kind === 'api_call') {
     html += `<div class="app-row">${escapeHtml(ui.title)}</div>`;
   }

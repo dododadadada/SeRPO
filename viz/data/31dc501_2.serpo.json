@@ -170,9 +170,9 @@
       "alarm_id": 394,
       "label": "Wake Up",
       "time": "09:30",
-      "snooze_minutes": 10,
+      "snooze_minutes": 15,
       "enabled": true,
-      "changed": false
+      "changed": true
      },
      {
       "alarm_id": 396,

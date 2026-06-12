@@ -39,7 +39,7 @@ def build_step_records(io_text: str) -> list[dict]:
     records: list[dict] = []
     prev = None
     for s in steps:
-        ui = derive_ui_state(s.app, s.api, s.output, prev)
+        ui = derive_ui_state(s.app, s.api, s.output, prev, s.code)
         prev = ui
         records.append({
             "step": s.step, "code": s.code, "output": s.output,

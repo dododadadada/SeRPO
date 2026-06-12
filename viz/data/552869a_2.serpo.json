@@ -93,7 +93,8 @@
    "api": "complete_task",
    "ui_state": {
     "kind": "result",
-    "title": "\u2705 Task submitted"
+    "title": "\u2705 Task submitted",
+    "answer": "144.0"
    }
   }
  ]
