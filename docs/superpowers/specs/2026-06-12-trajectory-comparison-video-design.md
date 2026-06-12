@@ -18,15 +18,19 @@ that **succeeds**. Each model's view shows:
 The video is produced as a **self-contained HTML/CSS/JS page animated on a timeline** and
 **screen-recorded** by the user (no headless render pipeline, no extra dependencies).
 
-## Scope and honest framing
+The page opens on a **task-selection start screen**: the two featured tasks are presented as
+choices. Clicking one loads that task's side-by-side comparison and **starts playing it**.
 
-This is a **qualitative illustration**, not a win-rate claim. On the matched dev/test_normal
-eval runs, SeRPO does **not** beat Vanilla in aggregate pass count (they are roughly tied;
-e.g. on test_normal-168, Vanilla 32 vs SeRPO 30). What the video shows is a real,
-reproducible phenomenon: **specific tasks where Vanilla fails and SeRPO recovers** ("flip"
-tasks). The narrative is "here are cases where SeRPO's segment-level signal recovers a
-failure mode Vanilla can't," and the spec, the page, and any caption must not over-claim
-beyond that.
+## Framing
+
+The story is, per task: **Vanilla-GRPO fails → SeRPO succeeds.** Every featured task is a
+confirmed "flip" — Vanilla's trajectory ends in a failed unit test, SeRPO's ends in a pass.
+The video shows this recovery directly: same task, same starting conditions, two outcomes.
+
+**Internal note (not audience-facing):** these are selected flip tasks, not evidence that
+SeRPO beats Vanilla in aggregate pass count (on the matched runs the two are roughly tied).
+Keep that in mind for any *separate* claim about overall win rate — but the video itself is
+scoped to the per-task fail→succeed contrast and does not assert aggregate dominance.
 
 ## Featured tasks (both are single-app "flip" tasks)
 
@@ -124,6 +128,13 @@ unit-testable independently of the player.
 
 ### 3. Player page — `player.html` (self-contained)
 - Loads `manifest.json` + the four `trajectory.json` files (inlined or fetched locally).
+- **Start screen (task selector):** on load, shows a title and the two featured tasks as
+  large clickable cards. Each card shows the task instruction, the app, and a
+  "Vanilla ✗ → SeRPO ✓" badge. **Clicking a card** hides the selector, loads that task's two
+  trajectories into the side-by-side stage, and **auto-starts playback** from step 1.
+  A "← back to tasks" affordance (outside the recorded stage) returns to the selector to pick
+  the other task. The selector is driven by `manifest.json`, so it lists exactly the tasks
+  present in the data — adding/removing a featured task needs no player-code change.
 - Renders the side-by-side layout; each quadrant = chat column + mock-app column.
 - **Timeline animation:** a single shared clock advances both models. Per step: agent bubble
   types in → env bubble appears → mock-app UI transitions to the derived state → pause →
