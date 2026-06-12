@@ -16,12 +16,13 @@ class Step:
 _HEADER_RE = re.compile(r"### Environment Interaction (\d+)\s*\n")
 
 # Within a single block, extract the code fence and output fence.
-# Uses [^`] negation so the match cannot cross fence boundaries.
+# Non-greedy (.*?) stops at the first closing ```. AppWorld outputs never
+# embed triple backticks, so this is safe for the real format.
 _CODE_RE = re.compile(r"```python\s*\n(.*?)```", re.DOTALL)
 _OUT_RE = re.compile(r"```\s*\n(.*?)```", re.DOTALL)
 
 # Last apis.<app>.<api>( call in the code is treated as the primary/state-changing one.
-_API_RE = re.compile(r"apis\.([a-z_]+)\.([a-z_]+)\s*\(")
+_API_RE = re.compile(r"apis\.([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)\s*\(")
 
 
 def _classify(code: str) -> tuple[str | None, str | None]:

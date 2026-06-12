@@ -36,3 +36,10 @@ def test_empty_code_step_has_none_app():
     steps = parse_io(md)
     assert steps[0].app is None
     assert steps[0].api is None
+
+
+def test_step_without_output_fence_is_skipped():
+    md = "\n### Environment Interaction 1\n---\n```python\nx=1\n```\n\n### Environment Interaction 2\n---\n```python\ny=2\n```\n\n```\nok\n```\n"
+    steps = parse_io(md)
+    assert len(steps) == 1
+    assert steps[0].step == 2
