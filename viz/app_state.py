@@ -11,7 +11,7 @@ from typing import Any
 _IDLE: dict = {"kind": "idle", "title": ""}
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(-?\d+)\s*$", re.MULTILINE)
-_KWARG_RE_TMPL = r"{name}\s*=\s*([A-Za-z_]\w*|-?\d+)"
+_KWARG_RE_TMPL = r"(?<!\w){name}\s*=\s*([A-Za-z_]\w*|-?\d+)"
 
 
 def _resolve_int_kwarg(code: str, kwarg: str) -> int | None:
@@ -34,12 +34,11 @@ def _parse_answer(code: str):
     string form suitable for display, or None. Handles numbers and quoted strings."""
     if not code:
         return None
-    m = re.search(r"complete_task\(\s*answer\s*=\s*(.+?)\s*\)\s*$", code, re.DOTALL)
+    # answer is always single-line; no re.DOTALL so a lazy match can't span
+    # newlines into a later complete_task call. Stop at the first comma/paren/EOL.
+    m = re.search(r"answer\s*=\s*([^,)\n]+)", code)
     if not m:
-        # answer may not be the only/last arg; try a looser match
-        m = re.search(r"answer\s*=\s*([^,)\n]+)", code)
-        if not m:
-            return None
+        return None
     val = m.group(1).strip()
     # strip surrounding quotes if a string literal
     if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
