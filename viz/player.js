@@ -14,7 +14,8 @@ const MAX_PLAY_STEPS = 10; // stop playback after this many steps (don't grind a
 function playLen(doc) { return Math.min(doc.num_steps, MAX_PLAY_STEPS); }
 
 async function loadJSON(path) {
-  const r = await fetch(path);
+  // Cache-bust + no-store so edits to the generated data are always picked up.
+  const r = await fetch(`${path}?v=${Date.now()}`, { cache: 'no-store' });
   if (!r.ok) throw new Error(`fetch ${path}: ${r.status}`);
   return r.json();
 }
@@ -51,8 +52,8 @@ async function startTask(taskId) {
   document.getElementById('stage').hidden = false;
   document.getElementById('task-instruction').textContent = vanilla.instruction;
   for (const p of document.querySelectorAll('.panel')) {
-    p.querySelector('[data-role=chat]').innerHTML = '';
-    p.querySelector('[data-role=appui]').innerHTML = '';
+    p.querySelector("[data-role='chat']").innerHTML = '';
+    p.querySelector("[data-role='appui']").innerHTML = '';
   }
   stepIndex = 0;
   emptyRun.vanilla = 0; emptyRun.serpo = 0;
@@ -69,7 +70,7 @@ function panelFor(model) { return document.querySelector(`.panel.${model}`); }
 // trajectory ends (so trailing empty steps also get reported).
 function flushEmptyRun(model) {
   if (emptyRun[model] > 0) {
-    const chat = panelFor(model).querySelector('[data-role=chat]');
+    const chat = panelFor(model).querySelector("[data-role='chat']");
     const note = document.createElement('div');
     note.className = 'bubble note';
     const n = emptyRun[model];
@@ -112,7 +113,7 @@ function renderStep(model, doc) {
     if (raw && degenShown[model] < MAX_DEGEN_SHOWN) {
       flushEmptyRun(model);
       degenShown[model]++;
-      const chat = panelFor(model).querySelector('[data-role=chat]');
+      const chat = panelFor(model).querySelector("[data-role='chat']");
       const b = document.createElement('div');
       b.className = 'bubble agent degen';
       b.innerHTML = `<div class="who">🤖 Agent — step ${escapeHtml(step.step)} · no code</div>` +
@@ -131,7 +132,7 @@ function renderStep(model, doc) {
   flushEmptyRun(model);
 
   const panel = panelFor(model);
-  const chat = panel.querySelector('[data-role=chat]');
+  const chat = panel.querySelector("[data-role='chat']");
 
   // Chat shows ONLY the agent's code. AppWorld's response is shown as a GUI
   // visualization in the right panel (renderAppUI), not as a text bubble.
@@ -222,7 +223,7 @@ function actionStrip(step) {
 }
 
 function renderAppUI(model, step, app) {
-  const appui = panelFor(model).querySelector('[data-role=appui]');
+  const appui = panelFor(model).querySelector("[data-role='appui']");
   const ui = step && step.ui_state;
   if (!ui) return;
   let body;
@@ -271,7 +272,7 @@ function renderAppUI(model, step, app) {
 }
 
 function maybeDoneBanner(model, doc) {
-  const appui = panelFor(model).querySelector('[data-role=appui]');
+  const appui = panelFor(model).querySelector("[data-role='appui']");
   if (appui.querySelector('.done-banner')) return;
   const banner = document.createElement('div');
   const pass = doc.passed === true;
