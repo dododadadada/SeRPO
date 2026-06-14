@@ -97,17 +97,13 @@ function renderStep(model, doc) {
   const panel = panelFor(model);
   const chat = panel.querySelector('[data-role=chat]');
 
+  // Chat shows ONLY the agent's code. AppWorld's response is shown as a GUI
+  // visualization in the right panel (renderAppUI), not as a text bubble.
   const agent = document.createElement('div');
   agent.className = 'bubble agent';
   agent.innerHTML = `<div class="who">🤖 Agent — step ${escapeHtml(step.step)}</div>` +
                     `<code class="mono">${escapeHtml(step.code)}</code>`;
   chat.appendChild(agent);
-
-  const env = document.createElement('div');
-  env.className = 'bubble env';
-  env.innerHTML = `<div class="who">🌐 AppWorld</div>` +
-                  `<div class="out">${escapeHtml(step.output)}</div>`;
-  chat.appendChild(env);
   chat.scrollTop = chat.scrollHeight;
 
   renderAppUI(model, step.ui_state);
@@ -122,7 +118,10 @@ function renderAppUI(model, ui) {
   } else if (ui.kind === 'login') {
     html += `<div class="app-row">🔓 Signed in</div>`;
   } else if (ui.kind === 'venmo_transactions') {
-    for (const r of ui.rows) {
+    if (!ui.rows || ui.rows.length === 0) {
+      html += `<div class="docs-note">Querying transactions…</div>`;
+    }
+    for (const r of (ui.rows || [])) {
       const hit = /electric|power/i.test(r.description || '');
       html += `<div class="app-row ${hit ? 'hit' : ''}">
         <span>${escapeHtml(r.sender)} → ${escapeHtml(r.receiver)}: ${escapeHtml(r.description)}</span>
@@ -139,6 +138,8 @@ function renderAppUI(model, ui) {
     html += `<div class="result-card">Task submitted${ans}</div>`;
   } else if (ui.kind === 'api_call') {
     html += `<div class="app-row">${escapeHtml(ui.title)}</div>`;
+  } else if (ui.kind === 'idle') {
+    html += `<div class="docs-note">…</div>`;
   }
   appui.innerHTML = html;
 }
