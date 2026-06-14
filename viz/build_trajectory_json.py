@@ -24,7 +24,21 @@ FEATURED = [
     {"task_id": "31dc501_2", "app": "phone"},
 ]
 
+# Human-readable reason a model's run failed, keyed by (task_id, model). Shown in
+# the red banner at the end of a failed run. Only the failing model needs an entry.
+FAIL_REASONS = {
+    ("552869a_2", "vanilla"):
+        "Summed ALL sent transactions ($7134) — never filtered for "
+        "\"electricity\", and never submitted an answer.",
+    ("31dc501_2", "vanilla"):
+        "Did the right action, but answered with a text string instead of "
+        "null (this task expects no answer).",
+}
+
 _FAILED_RE = re.compile(r"Num Failed Tests\s*:\s*(\d+)")
+
+# A step's output indicates a runtime failure / dead-end the agent hit.
+_ERROR_RE = re.compile(r"Execution failed|Traceback|Exception:|status code is \d", re.I)
 
 
 def passed_from_report(report_md: str) -> bool | None:
@@ -34,6 +48,22 @@ def passed_from_report(report_md: str) -> bool | None:
     return int(m.group(1)) == 0
 
 
+def _error_summary(output: str) -> str | None:
+    """If the step's output is a runtime error, return a short one-line summary;
+    otherwise None. Used to mark dead-ends inline in the chat."""
+    if not _ERROR_RE.search(output):
+        return None
+    # Prefer an HTTP-status message (e.g. 401 auth) if present.
+    m = re.search(r'status code is (\d+):\s*\{?"?message"?:?\s*"?([^"\}]+)', output)
+    if m:
+        return f"{m.group(1)}: {m.group(2).strip()[:80]}"
+    # Otherwise take the Exception/message text.
+    m = re.search(r"(?:Exception|Error):\s*(.+)", output)
+    if m:
+        return m.group(1).strip().splitlines()[0][:90]
+    return "Execution failed"
+
+
 def build_step_records(io_text: str) -> list[dict]:
     steps = parse_io(io_text)
     records: list[dict] = []
@@ -41,9 +71,11 @@ def build_step_records(io_text: str) -> list[dict]:
     for s in steps:
         ui = derive_ui_state(s.app, s.api, s.output, prev, s.code)
         prev = ui
+        err = _error_summary(s.output)
         records.append({
             "step": s.step, "code": s.code, "output": s.output,
             "app": s.app, "api": s.api, "ui_state": ui,
+            "is_error": err is not None, "error": err,
         })
     return records
 
@@ -73,8 +105,10 @@ def main(out_dir: Path) -> None:
         for model in ("vanilla", "serpo"):
             records = build_step_records(_io_text(tid, model))
             passed = _passed(tid, model)
+            fail_reason = None if passed else FAIL_REASONS.get((tid, model))
             doc = {"task_id": tid, "model": model, "app": app,
                    "instruction": instruction, "passed": passed,
+                   "fail_reason": fail_reason,
                    "num_steps": len(records), "steps": records}
             (out_dir / f"{tid}.{model}.json").write_text(json.dumps(doc, indent=1))
             entry[f"{model}_passed"] = passed

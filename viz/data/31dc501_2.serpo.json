@@ -4,6 +4,7 @@
  "app": "phone",
  "instruction": "Set my weekend wake up alarm snooze to 15 minutes.",
  "passed": true,
+ "fail_reason": null,
  "num_steps": 11,
  "steps": [
   {
@@ -15,7 +16,9 @@
    "ui_state": {
     "kind": "docs",
     "title": "\ud83d\udcd6 Reading API docs"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 2,
@@ -27,7 +30,9 @@
     "kind": "phone_alarms",
     "title": "Phone \u2014 alarms",
     "rows": []
-   }
+   },
+   "is_error": true,
+   "error": "401: You are either not authorized to access this phone API endpoint or your access t"
   },
   {
    "step": 3,
@@ -38,7 +43,9 @@
    "ui_state": {
     "kind": "docs",
     "title": "\ud83d\udcd6 Reading API docs"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 4,
@@ -49,7 +56,9 @@
    "ui_state": {
     "kind": "api_call",
     "title": "\u2699\ufe0f supervisor.show_account_passwords()"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 5,
@@ -60,7 +69,9 @@
    "ui_state": {
     "kind": "docs",
     "title": "\ud83d\udcd6 Reading API docs"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 6,
@@ -71,7 +82,9 @@
    "ui_state": {
     "kind": "docs",
     "title": "\ud83d\udcd6 Reading API docs"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 7,
@@ -82,7 +95,9 @@
    "ui_state": {
     "kind": "api_call",
     "title": "\u2699\ufe0f supervisor.show_account_passwords()"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 8,
@@ -93,7 +108,9 @@
    "ui_state": {
     "kind": "login",
     "title": "Phone \u2014 signed in"
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 9,
@@ -146,7 +163,9 @@
       "changed": false
      }
     ]
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 10,
@@ -199,7 +218,9 @@
       "changed": false
      }
     ]
-   }
+   },
+   "is_error": false,
+   "error": null
   },
   {
    "step": 11,
@@ -210,7 +231,9 @@
    "ui_state": {
     "kind": "result",
     "title": "\u2705 Task submitted"
-   }
+   },
+   "is_error": false,
+   "error": null
   }
  ]
 }

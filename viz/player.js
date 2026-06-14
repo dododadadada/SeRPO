@@ -100,10 +100,18 @@ function renderStep(model, doc) {
   // Chat shows ONLY the agent's code. AppWorld's response is shown as a GUI
   // visualization in the right panel (renderAppUI), not as a text bubble.
   const agent = document.createElement('div');
-  agent.className = 'bubble agent';
+  agent.className = 'bubble agent' + (step.is_error ? ' errored' : '');
   agent.innerHTML = `<div class="who">🤖 Agent — step ${escapeHtml(step.step)}</div>` +
                     `<code class="mono">${escapeHtml(step.code)}</code>`;
   chat.appendChild(agent);
+
+  // Mark a runtime dead-end inline so the audience sees the agent stumble.
+  if (step.is_error) {
+    const marker = document.createElement('div');
+    marker.className = 'bubble error-marker';
+    marker.textContent = `⚠️ ${step.error || 'Execution failed'}`;
+    chat.appendChild(marker);
+  }
   chat.scrollTop = chat.scrollHeight;
 
   renderAppUI(model, step.ui_state, doc.app);
@@ -177,7 +185,13 @@ function maybeDoneBanner(model, doc) {
   const banner = document.createElement('div');
   const pass = doc.passed === true;
   banner.className = `done-banner ${pass ? 'pass' : 'fail'}`;
-  banner.textContent = pass ? '✓ Task passed' : '✗ Task failed';
+  if (pass) {
+    banner.textContent = '✓ Task passed';
+  } else {
+    // For a failed run, show WHY it failed when we have a reason.
+    banner.innerHTML = `<div class="bn-title">✗ Task failed</div>` +
+      (doc.fail_reason ? `<div class="bn-why">${escapeHtml(doc.fail_reason)}</div>` : '');
+  }
   appui.appendChild(banner);
 }
 

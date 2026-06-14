@@ -1,4 +1,27 @@
-from viz.build_trajectory_json import passed_from_report, build_step_records
+from viz.build_trajectory_json import (
+    passed_from_report, build_step_records, _error_summary)
+
+
+def test_error_summary_detects_401():
+    out = ('Execution failed. Traceback:\n  ...\nException: Response status code '
+           'is 401: {"message":"You are not authorized or your token is missing."}')
+    s = _error_summary(out)
+    assert s is not None
+    assert s.startswith("401:")
+
+
+def test_error_summary_none_for_clean_output():
+    assert _error_summary('{"access_token": "TOK"}') is None
+
+
+def test_build_step_records_flags_error_step():
+    io = ("\n### Environment Interaction 1\n---\n```python\n"
+          "a = apis.phone.show_alarms()\n```\n\n```\n"
+          "Execution failed. Traceback: Exception: status code is 401: "
+          '{"message":"missing token"}\n```\n')
+    rec = build_step_records(io)[0]
+    assert rec["is_error"] is True
+    assert rec["error"] is not None
 
 
 def test_passed_from_report_true():
