@@ -87,7 +87,7 @@ function renderStep(model, doc) {
     // Accumulate into the current empty-step run.
     emptyRun[model]++;
     // App UI still reflects this step's state (usually idle/unchanged).
-    renderAppUI(model, step.ui_state);
+    renderAppUI(model, step.ui_state, doc.app);
     return;
   }
 
@@ -106,42 +106,69 @@ function renderStep(model, doc) {
   chat.appendChild(agent);
   chat.scrollTop = chat.scrollHeight;
 
-  renderAppUI(model, step.ui_state);
+  renderAppUI(model, step.ui_state, doc.app);
 }
 
-function renderAppUI(model, ui) {
+// Brand + display name for the device frame, by app.
+const APP_BRAND = {
+  venmo: { cls: 'venmo', name: 'venmo' },
+  phone: { cls: 'phone', name: '⏰ Alarms' },
+};
+
+function deviceFrame(app, bodyHtml) {
+  const brand = APP_BRAND[app] || { cls: 'neutral', name: 'AppWorld' };
+  return `<div class="device ${brand.cls}">
+    <div class="device-head">
+      <div class="clock">9:41</div>
+      <div class="brand">${escapeHtml(brand.name)}</div>
+    </div>
+    <div class="device-body">${bodyHtml}</div>
+  </div>`;
+}
+
+// Centered status screen used for plain steps (login / docs / generic calls).
+function statusScreen(emoji, msg) {
+  return `<div class="status-screen"><div class="big">${emoji}</div>
+          <div class="msg">${escapeHtml(msg)}</div></div>`;
+}
+
+function renderAppUI(model, ui, app) {
   const appui = panelFor(model).querySelector('[data-role=appui]');
   if (!ui) return;
-  let html = `<h3>${escapeHtml(ui.title || '')}</h3>`;
+  let body;
   if (ui.kind === 'docs') {
-    html += `<div class="docs-note">Looking up available APIs…</div>`;
+    body = statusScreen('📖', 'Reading API documentation…');
   } else if (ui.kind === 'login') {
-    html += `<div class="app-row">🔓 Signed in</div>`;
+    body = statusScreen('🔓', ui.title || 'Signed in');
   } else if (ui.kind === 'venmo_transactions') {
-    if (!ui.rows || ui.rows.length === 0) {
-      html += `<div class="docs-note">Querying transactions…</div>`;
-    }
-    for (const r of (ui.rows || [])) {
-      const hit = /electric|power/i.test(r.description || '');
-      html += `<div class="app-row ${hit ? 'hit' : ''}">
-        <span>${escapeHtml(r.sender)} → ${escapeHtml(r.receiver)}: ${escapeHtml(r.description)}</span>
-        <b>$${escapeHtml(r.amount)}</b></div>`;
-    }
+    // The agent computed the total in code; no row list comes back.
+    body = `<div class="status-screen"><div class="big">💳</div>
+            <div class="msg">Scanning sent transactions…</div></div>`;
   } else if (ui.kind === 'phone_alarms') {
-    for (const r of ui.rows) {
-      html += `<div class="app-row ${r.changed ? 'changed' : ''}">
-        <span>⏰ ${escapeHtml(r.label)} (${escapeHtml(r.time)})</span>
-        <b>snooze ${escapeHtml(r.snooze_minutes)}m</b></div>`;
-    }
+    body = (!ui.rows || ui.rows.length === 0)
+      ? statusScreen('⏰', 'Loading alarms…')
+      : (ui.rows || []).map(r => `
+      <div class="alarm ${r.changed ? 'changed' : ''}">
+        <div>
+          <div class="t">${escapeHtml(r.time)}</div>
+          <div class="sub">${escapeHtml(r.label)} · snooze ${escapeHtml(r.snooze_minutes)}m${r.changed ? ' ⟲' : ''}</div>
+        </div>
+        <div class="state">${r.enabled ? 'on' : 'off'}</div>
+      </div>`).join('');
   } else if (ui.kind === 'result') {
-    const ans = ui.answer != null ? ` — answer: ${escapeHtml(ui.answer)}` : '';
-    html += `<div class="result-card">Task submitted${ans}</div>`;
+    const ans = ui.answer != null
+      ? `<div class="cap">ELECTRICITY THIS YEAR</div>
+         <div class="total">$${escapeHtml(ui.answer)}</div>
+         <div class="note">computed from your sent transactions</div>
+         <div class="answer">✓ Answer submitted: ${escapeHtml(ui.answer)}</div>`
+      : `<div class="answer">✓ Task submitted</div>`;
+    body = `<div class="venmo-hero">${ans}</div>`;
   } else if (ui.kind === 'api_call') {
-    html += `<div class="app-row">${escapeHtml(ui.title)}</div>`;
-  } else if (ui.kind === 'idle') {
-    html += `<div class="docs-note">…</div>`;
+    body = statusScreen('⚙️', ui.title || 'API call');
+  } else { // idle / unknown
+    body = statusScreen('•', ui.title || 'Working…');
   }
-  appui.innerHTML = html;
+  appui.innerHTML = deviceFrame(app, body);
 }
 
 function maybeDoneBanner(model, doc) {
