@@ -87,7 +87,7 @@ function renderStep(model, doc) {
     // Accumulate into the current empty-step run.
     emptyRun[model]++;
     // App UI still reflects this step's state (usually idle/unchanged).
-    renderAppUI(model, step.ui_state, doc.app);
+    renderAppUI(model, step, doc.app);
     return;
   }
 
@@ -114,7 +114,7 @@ function renderStep(model, doc) {
   }
   chat.scrollTop = chat.scrollHeight;
 
-  renderAppUI(model, step.ui_state, doc.app);
+  renderAppUI(model, step, doc.app);
 }
 
 // Brand + display name for the device frame, by app.
@@ -140,8 +140,46 @@ function statusScreen(emoji, msg) {
           <div class="msg">${escapeHtml(msg)}</div></div>`;
 }
 
-function renderAppUI(model, ui, app) {
+// A one-line, human-readable summary of what a step's call RETURNED.
+function resultLine(step) {
+  if (step.is_error) return step.error || 'Execution failed';
+  // Don't surface credentials in the result line.
+  if (step.api === 'show_account_passwords') return 'credentials retrieved';
+  const ui = step.ui_state || {};
+  switch (ui.kind) {
+    case 'docs': return 'API list / schema returned';
+    case 'login': return 'access token received';
+    case 'phone_alarms':
+      if (step.api === 'update_alarm') {
+        const ch = (ui.rows || []).find(r => r.changed);
+        return ch ? `alarm ${ch.time} → snooze ${ch.snooze_minutes}m` : 'alarm updated';
+      }
+      return `${(ui.rows || []).length} alarms returned`;
+    case 'venmo_transactions': return 'transactions scanned';
+    case 'result':
+      return ui.answer != null ? `answer submitted: ${ui.answer}` : 'task submitted (no answer)';
+    default: {
+      // Fall back to a trimmed first line of the raw output.
+      const first = (step.output || '').trim().split('\n')[0];
+      return first.length > 70 ? first.slice(0, 70) + '…' : (first || 'done');
+    }
+  }
+}
+
+// The "what the agent tried → what happened" strip shown atop every screen.
+function actionStrip(step) {
+  const call = (step.app && step.api) ? `${step.app}.${step.api}()` : 'compute';
+  const cls = step.is_error ? 'result-line err' : 'result-line';
+  const icon = step.is_error ? '⚠️' : '↳';
+  return `<div class="action-strip">
+    <div class="tried-line">▶ ${escapeHtml(call)}</div>
+    <div class="${cls}">${icon} ${escapeHtml(resultLine(step))}</div>
+  </div>`;
+}
+
+function renderAppUI(model, step, app) {
   const appui = panelFor(model).querySelector('[data-role=appui]');
+  const ui = step && step.ui_state;
   if (!ui) return;
   let body;
   if (ui.kind === 'docs') {
@@ -176,7 +214,16 @@ function renderAppUI(model, ui, app) {
   } else { // idle / unknown
     body = statusScreen('•', ui.title || 'Working…');
   }
-  appui.innerHTML = deviceFrame(app, body);
+  // On a runtime error, show WHY prominently as the screen content.
+  if (step.is_error) {
+    body = `<div class="error-screen">
+        <div class="big">⚠️</div>
+        <div class="er-title">Call failed</div>
+        <div class="er-why">${escapeHtml(step.error || 'Execution failed')}</div>
+      </div>`;
+  }
+  // Every screen leads with the "tried → result" strip.
+  appui.innerHTML = deviceFrame(app, actionStrip(step) + body);
 }
 
 function maybeDoneBanner(model, doc) {
