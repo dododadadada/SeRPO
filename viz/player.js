@@ -5,6 +5,8 @@ let paused = false;
 let stepIndex = 0;
 let current = null; // { vanilla: doc, serpo: doc, maxSteps }
 const emptyRun = { vanilla: 0, serpo: 0 }; // count of pending collapsed empty steps
+const degenShown = { vanilla: 0, serpo: 0 }; // empty steps already shown verbatim
+const MAX_DEGEN_SHOWN = 3; // show this many no-code repetitions, then collapse the rest
 
 async function loadJSON(path) {
   const r = await fetch(path);
@@ -47,6 +49,7 @@ async function startTask(taskId) {
   }
   stepIndex = 0;
   emptyRun.vanilla = 0; emptyRun.serpo = 0;
+  degenShown.vanilla = 0; degenShown.serpo = 0;
   paused = false;
   document.getElementById('playpause').textContent = '⏸ Pause';
   scheduleNext();
@@ -62,7 +65,12 @@ function flushEmptyRun(model) {
     const chat = panelFor(model).querySelector('[data-role=chat]');
     const note = document.createElement('div');
     note.className = 'bubble note';
-    note.textContent = `… ${emptyRun[model]} empty step${emptyRun[model] > 1 ? 's' : ''}`;
+    const n = emptyRun[model];
+    // If we already showed some degenerate repetitions, frame the remainder as
+    // "more of the same"; otherwise it's just blank/no-code steps.
+    note.textContent = degenShown[model] >= MAX_DEGEN_SHOWN
+      ? `↻ repeated ${n} more time${n > 1 ? 's' : ''} — never submitted an answer`
+      : `… ${n} empty step${n > 1 ? 's' : ''}`;
     chat.appendChild(note);
     chat.scrollTop = chat.scrollHeight;
     emptyRun[model] = 0;
@@ -84,8 +92,23 @@ function renderStep(model, doc) {
   const isEmpty = !step.code || !step.code.trim();
 
   if (isEmpty) {
-    // Accumulate into the current empty-step run.
-    emptyRun[model]++;
+    // The model emitted no runnable code. If it produced raw text (e.g. it kept
+    // repeating "7134.0"), show the first few verbatim so the audience sees the
+    // degeneration, then collapse the rest into the empty-step note.
+    const raw = (step.raw_output || '').trim();
+    if (raw && degenShown[model] < MAX_DEGEN_SHOWN) {
+      flushEmptyRun(model);
+      degenShown[model]++;
+      const chat = panelFor(model).querySelector('[data-role=chat]');
+      const b = document.createElement('div');
+      b.className = 'bubble agent degen';
+      b.innerHTML = `<div class="who">🤖 Agent — step ${escapeHtml(step.step)} · no code</div>` +
+                    `<code class="mono">${escapeHtml(raw)}</code>`;
+      chat.appendChild(b);
+      chat.scrollTop = chat.scrollHeight;
+    } else {
+      emptyRun[model]++;
+    }
     // App UI still reflects this step's state (usually idle/unchanged).
     renderAppUI(model, step, doc.app);
     return;

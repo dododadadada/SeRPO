@@ -102,6 +102,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
 .bubble.note { background: transparent; color: #9ca3af; font-style: italic;
                font-size: 12px; text-align: center; margin: 2px auto; }
 .bubble.agent.errored { outline: 2px solid #f87171; }
+.bubble.agent.degen { background: #fff7ed; color: #9a3412; outline: 1px dashed #fdba74; }
+.bubble.agent.degen .who { color: #c2410c; }
 .bubble.error-marker { background: #fee2e2; color: #991b1b; font-weight: 600;
                        font-size: 12px; margin: 2px auto 8px; max-width: 92%;
                        border-radius: 8px; }

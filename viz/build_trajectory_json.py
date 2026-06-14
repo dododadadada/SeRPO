@@ -83,10 +83,14 @@ def _error_summary(output: str) -> str | None:
     return "Execution failed"
 
 
-def build_step_records(io_text: str, root_cause: dict | None = None) -> list[dict]:
+def build_step_records(io_text: str, root_cause: dict | None = None,
+                       lm_outputs: list[str] | None = None) -> list[dict]:
     """Parse a transcript into step records. If root_cause = {"step": N, "text": ...}
-    is given, the matching step record gets a "root_cause" string (others get None)."""
+    is given, the matching step record gets a "root_cause" string (others get None).
+    lm_outputs[i] (if given) is the raw model text for step i+1; attached as
+    "raw_output" so the player can show degenerate no-code turns verbatim."""
     steps = parse_io(io_text)
+    lm_outputs = lm_outputs or []
     records: list[dict] = []
     prev = None
     for s in steps:
@@ -94,11 +98,13 @@ def build_step_records(io_text: str, root_cause: dict | None = None) -> list[dic
         prev = ui
         err = _error_summary(s.output)
         rc = root_cause["text"] if (root_cause and s.step == root_cause["step"]) else None
+        idx = s.step - 1
+        raw = lm_outputs[idx].strip() if 0 <= idx < len(lm_outputs) else ""
         records.append({
             "step": s.step, "code": s.code, "output": s.output,
             "app": s.app, "api": s.api, "ui_state": ui,
             "is_error": err is not None, "error": err,
-            "root_cause": rc,
+            "root_cause": rc, "raw_output": raw,
         })
     return records
 
@@ -118,6 +124,24 @@ def _passed(task_id: str, model: str) -> bool | None:
     return passed_from_report(p.read_text()) if p.exists() else None
 
 
+def _lm_outputs(task_id: str, model: str) -> list[str]:
+    """Per-step raw model message text from lm_calls.jsonl (1:1 with steps).
+    Returns [] if the file is absent."""
+    p = EVAL / CONFIGS[model] / "tasks" / task_id / "logs" / "lm_calls.jsonl"
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            d = json.loads(line)
+            out.append(d["output"]["choices"][0]["message"]["content"] or "")
+        except (ValueError, KeyError, IndexError, TypeError):
+            out.append("")
+    return out
+
+
 def main(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
@@ -127,7 +151,8 @@ def main(out_dir: Path) -> None:
         entry = {"task_id": tid, "app": app, "instruction": instruction}
         for model in ("vanilla", "serpo"):
             records = build_step_records(_io_text(tid, model),
-                                         ROOT_CAUSES.get((tid, model)))
+                                         ROOT_CAUSES.get((tid, model)),
+                                         _lm_outputs(tid, model))
             passed = _passed(tid, model)
             fail_reason = None if passed else FAIL_REASONS.get((tid, model))
             doc = {"task_id": tid, "model": model, "app": app,
