@@ -134,20 +134,27 @@ function renderStep(model, doc) {
   const panel = panelFor(model);
   const chat = panel.querySelector("[data-role='chat']");
 
-  // Chat shows ONLY the agent's code. AppWorld's response is shown as a GUI
-  // visualization in the right panel (renderAppUI), not as a text bubble.
+  // Agent bubble: the code the agent wrote.
   const agent = document.createElement('div');
   agent.className = 'bubble agent' + (step.is_error ? ' errored' : '');
   agent.innerHTML = `<div class="who">🤖 Agent — step ${escapeHtml(step.step)}</div>` +
                     `<code class="mono">${escapeHtml(step.code)}</code>`;
   chat.appendChild(agent);
 
-  // Mark a runtime dead-end inline so the audience sees the agent stumble.
+  // AppWorld reply bubble: the environment's response (also visualized on the
+  // right panel). Long outputs (e.g. API-docs dumps) are clamped via CSS.
   if (step.is_error) {
+    // For a failure, show it as a red error reply instead of a normal bubble.
     const marker = document.createElement('div');
     marker.className = 'bubble error-marker';
     marker.textContent = `⚠️ ${step.error || 'Execution failed'}`;
     chat.appendChild(marker);
+  } else {
+    const env = document.createElement('div');
+    env.className = 'bubble env';
+    env.innerHTML = `<div class="who">🌐 AppWorld</div>` +
+                    `<div class="out">${escapeHtml(step.output)}</div>`;
+    chat.appendChild(env);
   }
 
   // Pin the root-cause explanation under the offending step.
