@@ -7,6 +7,11 @@ let current = null; // { vanilla: doc, serpo: doc, maxSteps }
 const emptyRun = { vanilla: 0, serpo: 0 }; // count of pending collapsed empty steps
 const degenShown = { vanilla: 0, serpo: 0 }; // empty steps already shown verbatim
 const MAX_DEGEN_SHOWN = 3; // show this many no-code repetitions, then collapse the rest
+const MAX_PLAY_STEPS = 10; // stop playback after this many steps (don't grind all 50)
+
+// How many steps we actually play for a doc (capped), and how many real steps
+// the cap skips (so the collapse note can report the true remaining count).
+function playLen(doc) { return Math.min(doc.num_steps, MAX_PLAY_STEPS); }
 
 async function loadJSON(path) {
   const r = await fetch(path);
@@ -39,7 +44,9 @@ async function startTask(taskId) {
   if (timer) { clearTimeout(timer); timer = null; }
   const vanilla = await loadJSON(`data/${taskId}.vanilla.json`);
   const serpo = await loadJSON(`data/${taskId}.serpo.json`);
-  current = { vanilla, serpo, maxSteps: Math.max(vanilla.num_steps, serpo.num_steps) };
+  // Clock runs until the longer (capped) trajectory ends.
+  current = { vanilla, serpo,
+              maxSteps: Math.max(playLen(vanilla), playLen(serpo)) };
   document.getElementById('selector').hidden = true;
   document.getElementById('stage').hidden = false;
   document.getElementById('task-instruction').textContent = vanilla.instruction;
@@ -82,8 +89,14 @@ function flushEmptyRun(model) {
 // add agent/env bubbles.  Non-empty steps: flush any pending emptyRun first,
 // then add bubbles normally.
 function renderStep(model, doc) {
-  if (stepIndex >= doc.num_steps) {
-    // Trajectory is done — flush any trailing empty-step run, then banner.
+  const end = playLen(doc);
+  if (stepIndex >= end) {
+    // Reached the trajectory end (or the play cap). If the cap cut the run
+    // short, fold the unplayed real steps into the collapse count so the note
+    // reports the true remaining number, then flush + banner.
+    if (stepIndex === end && doc.num_steps > end) {
+      emptyRun[model] += doc.num_steps - end;
+    }
     flushEmptyRun(model);
     maybeDoneBanner(model, doc);
     return;
