@@ -18,7 +18,8 @@
     "title": "\ud83d\udcd6 Reading API docs"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 2,
@@ -31,7 +32,8 @@
     "title": "\ud83d\udcd6 Reading API docs"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 3,
@@ -44,7 +46,8 @@
     "title": "\u2699\ufe0f supervisor.show_account_passwords()"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 4,
@@ -57,7 +60,8 @@
     "title": "Venmo \u2014 signed in"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 5,
@@ -70,7 +74,8 @@
     "title": "Venmo \u2014 signed in"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 6,
@@ -84,7 +89,8 @@
     "rows": []
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 7,
@@ -98,7 +104,8 @@
     "rows": []
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 8,
@@ -112,7 +119,8 @@
     "answer": "144.0"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   }
  ]
 }

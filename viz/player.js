@@ -112,6 +112,14 @@ function renderStep(model, doc) {
     marker.textContent = `⚠️ ${step.error || 'Execution failed'}`;
     chat.appendChild(marker);
   }
+
+  // Pin the root-cause explanation under the offending step.
+  if (step.root_cause) {
+    const rc = document.createElement('div');
+    rc.className = 'root-cause';
+    rc.innerHTML = `<span class="rc-tag">WHY THIS FAILS</span> ${escapeHtml(step.root_cause)}`;
+    chat.appendChild(rc);
+  }
   chat.scrollTop = chat.scrollHeight;
 
   renderAppUI(model, step, doc.app);

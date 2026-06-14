@@ -105,6 +105,12 @@ body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
 .bubble.error-marker { background: #fee2e2; color: #991b1b; font-weight: 600;
                        font-size: 12px; margin: 2px auto 8px; max-width: 92%;
                        border-radius: 8px; }
+.root-cause { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #ea580c;
+              color: #7c2d12; font-size: 12.5px; line-height: 1.5; border-radius: 8px;
+              padding: 9px 11px; margin: 4px 0 10px; animation: pop .18s ease-out; }
+.root-cause .rc-tag { display: inline-block; background: #ea580c; color: #fff;
+                      font-size: 10px; font-weight: 800; letter-spacing: .04em;
+                      padding: 1px 6px; border-radius: 5px; margin-right: 6px; }
 .bubble code, .bubble .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .bubble.env .out { font-family: ui-monospace, Menlo, Consolas, monospace;
                    max-height: 7.5em; overflow: hidden; }

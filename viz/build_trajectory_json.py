@@ -35,6 +35,25 @@ FAIL_REASONS = {
         "null (this task expects no answer).",
 }
 
+# Root-cause callout pinned to the specific offending step, keyed by
+# (task_id, model) -> {"step": N, "text": "..."}. Rendered under that step's
+# code bubble so the audience sees WHERE and WHY the run went wrong.
+ROOT_CAUSES = {
+    ("552869a_2", "vanilla"): {
+        "step": 6,
+        "text": ("Root cause: this loop sums EVERY sent transaction — it never "
+                 "checks the description for \"electricity\". It computes 7134.0, "
+                 "but the task wants only the electricity total (144). After this, "
+                 "the agent stalls and never submits an answer."),
+    },
+    ("31dc501_2", "vanilla"): {
+        "step": 8,
+        "text": ("Root cause: the alarm was updated correctly, but this submits a "
+                 "chat-style string as the answer. This task expects no answer "
+                 "(null), so the answer check fails."),
+    },
+}
+
 _FAILED_RE = re.compile(r"Num Failed Tests\s*:\s*(\d+)")
 
 # A step's output indicates a runtime failure / dead-end the agent hit.
@@ -64,7 +83,9 @@ def _error_summary(output: str) -> str | None:
     return "Execution failed"
 
 
-def build_step_records(io_text: str) -> list[dict]:
+def build_step_records(io_text: str, root_cause: dict | None = None) -> list[dict]:
+    """Parse a transcript into step records. If root_cause = {"step": N, "text": ...}
+    is given, the matching step record gets a "root_cause" string (others get None)."""
     steps = parse_io(io_text)
     records: list[dict] = []
     prev = None
@@ -72,10 +93,12 @@ def build_step_records(io_text: str) -> list[dict]:
         ui = derive_ui_state(s.app, s.api, s.output, prev, s.code)
         prev = ui
         err = _error_summary(s.output)
+        rc = root_cause["text"] if (root_cause and s.step == root_cause["step"]) else None
         records.append({
             "step": s.step, "code": s.code, "output": s.output,
             "app": s.app, "api": s.api, "ui_state": ui,
             "is_error": err is not None, "error": err,
+            "root_cause": rc,
         })
     return records
 
@@ -103,7 +126,8 @@ def main(out_dir: Path) -> None:
         instruction = _instruction(tid)
         entry = {"task_id": tid, "app": app, "instruction": instruction}
         for model in ("vanilla", "serpo"):
-            records = build_step_records(_io_text(tid, model))
+            records = build_step_records(_io_text(tid, model),
+                                         ROOT_CAUSES.get((tid, model)))
             passed = _passed(tid, model)
             fail_reason = None if passed else FAIL_REASONS.get((tid, model))
             doc = {"task_id": tid, "model": model, "app": app,

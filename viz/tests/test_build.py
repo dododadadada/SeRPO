@@ -14,6 +14,14 @@ def test_error_summary_none_for_clean_output():
     assert _error_summary('{"access_token": "TOK"}') is None
 
 
+def test_build_step_records_attaches_root_cause_to_matching_step():
+    io = ("\n### Environment Interaction 1\n---\n```python\nx = apis.venmo.login()\n```\n\n```\nok\n```\n"
+          "\n### Environment Interaction 2\n---\n```python\ny = apis.venmo.show_transactions()\n```\n\n```\n7134.0\n```\n")
+    recs = build_step_records(io, {"step": 2, "text": "missing filter"})
+    assert recs[0]["root_cause"] is None
+    assert recs[1]["root_cause"] == "missing filter"
+
+
 def test_build_step_records_flags_error_step():
     io = ("\n### Environment Interaction 1\n---\n```python\n"
           "a = apis.phone.show_alarms()\n```\n\n```\n"

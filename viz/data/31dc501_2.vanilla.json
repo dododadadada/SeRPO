@@ -18,7 +18,8 @@
     "title": "\ud83d\udcd6 Reading API docs"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 2,
@@ -32,7 +33,8 @@
     "rows": []
    },
    "is_error": true,
-   "error": "401: You are either not authorized to access this phone API endpoint or your access t"
+   "error": "401: You are either not authorized to access this phone API endpoint or your access t",
+   "root_cause": null
   },
   {
    "step": 3,
@@ -45,7 +47,8 @@
     "title": "\ud83d\udcd6 Reading API docs"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 4,
@@ -58,7 +61,8 @@
     "title": "\u2699\ufe0f supervisor.show_account_passwords()"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 5,
@@ -71,7 +75,8 @@
     "title": "Phone \u2014 signed in"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 6,
@@ -126,7 +131,8 @@
     ]
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 7,
@@ -181,7 +187,8 @@
     ]
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": null
   },
   {
    "step": 8,
@@ -195,7 +202,8 @@
     "answer": "Alarm snooze updated to 15 minutes"
    },
    "is_error": false,
-   "error": null
+   "error": null,
+   "root_cause": "Root cause: the alarm was updated correctly, but this submits a chat-style string as the answer. This task expects no answer (null), so the answer check fails."
   }
  ]
 }
