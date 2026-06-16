@@ -62,8 +62,12 @@
   .contrib { margin-top: 16px; border: 2px solid #db2777; border-left: 7px solid #db2777;
              border-radius: 12px; padding: 14px 16px; background: #fdf2f8; }
   .contrib h4 { margin: 0 0 10px; font-size: 14px; color: #9d174d; letter-spacing: .02em; }
-  .contrib .pts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .contrib .pts { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: start; }
   .contrib .pt { font-size: 13px; line-height: 1.5; }
+  .contrib .plot { margin-top: 10px; border: 1px solid #f5d0e4; border-radius: 8px;
+                   background: #fff; padding: 6px; }
+  .contrib .plot img { width: 100%; display: block; border-radius: 4px; }
+  .contrib .plot .cap { font-size: 10px; color: #9d174d; text-align: center; margin-top: 4px; }
   .contrib .pt b { color: #9d174d; }
   .contrib .tag { display: inline-block; background: #db2777; color: #fff; font-size: 10px;
                   font-weight: 800; padding: 1px 7px; border-radius: 6px; margin-right: 6px; }
@@ -175,6 +179,10 @@
         SeRPO's <b>per-segment</b> rewards still vary within a trajectory →
         <span class="nonzero">gradient ≠ 0</span>, so the policy keeps improving even
         when all trajectories failed.
+        <div class="plot">
+          <img src="failonly_advantages.png" alt="Fail-only advantage distribution: GRPO=0 vs SeRPO spread">
+          <div class="cap">Real fail-only batch (80 tasks × 8 seeds): GRPO/GiGPO advantage ≡ 0; SeRPO spreads −1.3…3.1 (99% nonzero)</div>
+        </div>
       </div>
       <div class="pt">
         <span class="tag">LOCATES THE FAILURE POINT</span><br>
