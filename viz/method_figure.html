@@ -10,7 +10,8 @@
   body { margin: 0; background: #fff; color: #1f2937;
          font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   .fig { max-width: 1180px; margin: 24px auto; padding: 0 16px; }
-  .stages { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 14px; align-items: stretch; }
+  .stages { display: grid; grid-template-columns: 1fr auto 1.3fr auto 1fr; gap: 12px;
+            align-items: stretch; }
   .stage { border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 12px; background: #fff;
            display: flex; flex-direction: column; }
   .stage h3 { margin: 0 0 10px; font-size: 14px; font-weight: 800; text-align: center; color: #0f172a; }
@@ -101,7 +102,7 @@
     <div class="between">⇒</div>
 
     <!-- ================= STAGE 2 ================= -->
-    <div class="stage" style="grid-column: 2 / 3;">
+    <div class="stage">
       <h3>Hindsight Modulated Segmental Process Rewards</h3>
       <div style="font-size:11px;color:#64748b;text-align:center;margin-bottom:4px">collected trajectory τ ∈ D<sub>ct</sub></div>
       <div class="tape">
@@ -148,7 +149,7 @@
     <div class="between">⇒</div>
 
     <!-- ================= STAGE 3 ================= -->
-    <div class="stage" style="grid-column: 3 / 4;">
+    <div class="stage">
       <h3>Reinforcement Learning</h3>
       <div style="font-size:11px;color:#64748b;text-align:center;margin-bottom:6px">grounding reward</div>
       <div class="rewardset">{ r̂<sub>1,g</sub>, r̂<sub>2,g</sub>, r̂<sub>3,g</sub> }</div>
