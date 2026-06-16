@@ -105,6 +105,20 @@
                  font-size: 12px; color: #db2777; border: 1.5px solid #f9a8d4; border-radius: 8px;
                  padding: 3px 8px; background: #fdf2f8; }
   .midline { text-align: center; font-size: 11px; color: #64748b; margin: 7px 0 3px; font-weight: 700; }
+
+  /* PPO step: advantage -> policy probability up/down, per segment */
+  .ppo { margin-top: 8px; border-top: 1px dashed #f5d0e4; padding-top: 8px; }
+  .ppo .ppo-row { display: grid; grid-template-columns: 92px 1fr 132px; gap: 10px; align-items: center; }
+  .ppo .ppo-lab { font-size: 11px; font-weight: 800; text-align: right; line-height: 1.2; }
+  .ppo .ppo-lab .sub { display:block; font-weight:600; color:#64748b; font-size:10px; }
+  .ppo .cells { display: flex; gap: 5px; }
+  .ppo .cell { flex: 1; text-align: center; font-size: 12px; font-weight: 800; padding: 3px 0;
+               border-radius: 6px; }
+  .ppo .cell.pos { background: #dcfce7; color: #166534; }
+  .ppo .cell.neg { background: #fee2e2; color: #991b1b; }
+  .ppo .rule { font-size: 11px; font-weight: 800; color: #3730a3; }
+  .ppo .pi-eff { font-size: 13px; font-weight: 800; }
+  .ppo .pi-eff.up { color: #16a34a; } .ppo .pi-eff.down { color: #dc2626; }
   .contrib .pt b { color: #9d174d; }
   .contrib .tag { display: inline-block; background: #db2777; color: #fff; font-size: 10px;
                   font-weight: 800; padding: 1px 7px; border-radius: 6px; margin-right: 6px; }
@@ -250,11 +264,29 @@
               </div>
               <div class="eff targeted">reinforce good · suppress failure step</div>
             </div>
-            <div style="text-align:center;margin-top:8px">
-              <span class="policy-node">🤖 π<sub>policy</sub> updated — failure segment corrected</span>
+            <div class="ppo">
+              <div class="ppo-row" style="margin-bottom:4px">
+                <div class="ppo-lab">advantage Âᵢ<span class="sub">from segment reward</span></div>
+                <div class="cells">
+                  <div class="cell pos">+</div><div class="cell pos">+</div>
+                  <div class="cell neg">−</div><div class="cell pos">+</div>
+                </div>
+                <div class="rule">PPO: ↑π if Â&gt;0,&nbsp; ↓π if Â&lt;0</div>
+              </div>
+              <div class="ppo-row">
+                <div class="ppo-lab">effect on policy<span class="sub">π(action | state)</span></div>
+                <div class="cells">
+                  <div class="cell pos">π↑</div><div class="cell pos">π↑</div>
+                  <div class="cell neg">π↓</div><div class="cell pos">π↑</div>
+                </div>
+                <div class="pi-eff up">good steps made <span class="up">more</span> likely,<br><span class="down">failure step less likely</span></div>
+              </div>
+              <div style="text-align:center;margin-top:8px">
+                <span class="policy-node">🤖 π<sub>policy</sub> updated — failure segment's action down-weighted</span>
+              </div>
             </div>
           </div>
-          <div class="cap">Same failed trajectory. Outcome-RL spreads one scalar (0 here) over every token → no targeted push. SeRPO sends <b>+credit</b> to the segments that worked and <b>−credit</b> to the failure step, so PPO updates the policy <i>precisely where it went wrong</i>.</div>
+          <div class="cap">PPO uses each segment's advantage Âᵢ: it <b>increases</b> the probability of actions in +Â segments and <b>decreases</b> it for the −Â failure step. Outcome-RL's flat/zero advantage gives no such directed push.</div>
         </div>
       </div>
       <div class="pt">
