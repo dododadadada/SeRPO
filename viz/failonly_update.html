@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Policy update on a fail-only trajectory — GRPO vs SeRPO</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #1f2937;
+         font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { width: 980px; margin: 22px auto; padding: 0 16px; }
+  .title { text-align: center; font-size: 18px; font-weight: 800; color: #0f172a; }
+  .sub { text-align: center; font-size: 12px; color: #64748b; margin: 4px 0 18px; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .col { border: 2px solid #cbd5e1; border-radius: 14px; overflow: hidden; }
+  .col.grpo { border-color: #ef4444; }
+  .col.serpo { border-color: #22c55e; }
+  .col h3 { margin: 0; padding: 10px 14px; font-size: 15px; color: #fff; text-align: center; }
+  .col.grpo h3 { background: #ef4444; }
+  .col.serpo h3 { background: #22c55e; }
+  .col .body { padding: 14px; }
+
+  /* a labeled stage row inside a column */
+  .stage { margin-bottom: 12px; }
+  .stage .lab { font-size: 11px; font-weight: 800; color: #475569; letter-spacing: .03em;
+                text-transform: uppercase; margin-bottom: 5px; }
+  .segrow { display: flex; gap: 6px; }
+  .cellbox { flex: 1; height: 36px; border-radius: 7px; display: flex; align-items: center;
+             justify-content: center; font-size: 14px; font-weight: 800;
+             border: 1px solid rgba(0,0,0,.12); }
+  /* trajectory tokens */
+  .seg { background: #eef2f7; color: #334155; flex-direction: column; font-size: 10px; gap: 1px; }
+  .seg b { font-size: 12px; }
+  /* score / advantage / pi cells */
+  .gray { background: #e5e7eb; color: #6b7280; }
+  .s5 { background: #bbf7d0; color:#166534; } .s4 { background: #d9f99d; color:#3f6212; }
+  .s1 { background: #fecaca; color:#991b1b; }
+  .pos { background: #dcfce7; color: #166534; } .neg { background: #fee2e2; color: #991b1b; }
+  .fail { outline: 2.5px solid #dc2626; }
+  .arrow { text-align: center; color: #94a3b8; font-size: 16px; margin: 2px 0 8px; }
+  .note { font-size: 11px; line-height: 1.45; border-radius: 8px; padding: 8px 10px; }
+  .note.bad { background: #fef2f2; color: #991b1b; }
+  .note.good { background: #f0fdf4; color: #166534; }
+  .verdict { margin-top: 10px; text-align: center; font-size: 13px; font-weight: 800;
+             border-radius: 10px; padding: 8px; }
+  .verdict.bad { background: #fee2e2; color: #991b1b; }
+  .verdict.good { background: #dcfce7; color: #166534; }
+  .same-traj { text-align:center; font-size:11px; color:#64748b; margin: 0 0 12px; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">Policy update on a <span style="color:#dc2626">fail-only</span> trajectory: Vanilla GRPO vs SeRPO</div>
+  <div class="sub">Same failed rollout (final outcome = fail). Each column walks reward → advantage Âᵢ → PPO effect on π.</div>
+  <div class="same-traj">shared trajectory:&nbsp; s₁ explore · s₂ fetch · <span style="color:#dc2626">s₃ premature action (fails)</span> · s₄ retry</div>
+
+  <div class="cols">
+    <!-- ===================== GRPO ===================== -->
+    <div class="col grpo">
+      <h3>✗ Vanilla GRPO &nbsp;(outcome reward)</h3>
+      <div class="body">
+        <div class="stage">
+          <div class="lab">1 · reward — one scalar for the whole trajectory</div>
+          <div class="segrow">
+            <div class="cellbox gray">r = 0</div><div class="cellbox gray">r = 0</div>
+            <div class="cellbox gray">r = 0</div><div class="cellbox gray">r = 0</div>
+          </div>
+        </div>
+        <div class="arrow">↓ group-normalize: Â = (r − mean)/std</div>
+        <div class="stage">
+          <div class="lab">2 · advantage Âᵢ — all rollouts failed → std = 0</div>
+          <div class="segrow">
+            <div class="cellbox gray">0</div><div class="cellbox gray">0</div>
+            <div class="cellbox gray">0</div><div class="cellbox gray">0</div>
+          </div>
+        </div>
+        <div class="arrow">↓ PPO: ∇ ∝ Â · ∇log π</div>
+        <div class="stage">
+          <div class="lab">3 · effect on policy π</div>
+          <div class="segrow">
+            <div class="cellbox gray">—</div><div class="cellbox gray">—</div>
+            <div class="cellbox gray">—</div><div class="cellbox gray">—</div>
+          </div>
+        </div>
+        <div class="note bad">Â = 0 on every token → gradient = 0 → <b>no parameter update</b>. The failing
+          step s₃ is never down-weighted; the model repeats the same mistake next time.</div>
+        <div class="verdict bad">π unchanged — nothing learned</div>
+      </div>
+    </div>
+
+    <!-- ===================== SeRPO ===================== -->
+    <div class="col serpo">
+      <h3>✓ SeRPO &nbsp;(segment-level reward)</h3>
+      <div class="body">
+        <div class="stage">
+          <div class="lab">1 · reward — one per segment</div>
+          <div class="segrow">
+            <div class="cellbox s5">5</div><div class="cellbox s4">4</div>
+            <div class="cellbox s1 fail">1</div><div class="cellbox s4">4</div>
+          </div>
+        </div>
+        <div class="arrow">↓ normalize within trajectory: Â varies</div>
+        <div class="stage">
+          <div class="lab">2 · advantage Âᵢ — differs across segments</div>
+          <div class="segrow">
+            <div class="cellbox pos">+</div><div class="cellbox pos">+</div>
+            <div class="cellbox neg fail">−</div><div class="cellbox pos">+</div>
+          </div>
+        </div>
+        <div class="arrow">↓ PPO: ↑π if Â&gt;0, ↓π if Â&lt;0</div>
+        <div class="stage">
+          <div class="lab">3 · effect on policy π</div>
+          <div class="segrow">
+            <div class="cellbox pos">π↑</div><div class="cellbox pos">π↑</div>
+            <div class="cellbox neg fail">π↓</div><div class="cellbox pos">π↑</div>
+          </div>
+        </div>
+        <div class="note good">Â ≠ 0 within the trajectory → gradient ≠ 0. PPO <b>raises</b> π for the
+          segments that worked and <b>lowers</b> π for the failing step s₃ — a targeted update
+          even though the trajectory failed.</div>
+        <div class="verdict good">π updated — failure step s₃ down-weighted</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
