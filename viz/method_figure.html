@@ -87,6 +87,24 @@
   .sg.fail::after { content: "failure point"; position: absolute; top: -15px; font-size: 9px;
                     font-weight: 800; color: #dc2626; white-space: nowrap; }
   .schem .cap { font-size: 10px; color: #9d174d; text-align: center; margin-top: 12px; }
+
+  /* Credit -> policy-update mechanism row */
+  .update { margin-top: 6px; }
+  .update .seg-credit { display: grid; grid-template-columns: 92px 1fr 132px; gap: 10px; align-items: center; }
+  .update .credits { display: flex; gap: 5px; }
+  .update .cr { flex: 1; text-align: center; font-size: 14px; font-weight: 800; }
+  .update .cr.up { color: #16a34a; }      /* reinforce */
+  .update .cr.down { color: #dc2626; }     /* suppress */
+  .update .cr.flat { color: #9ca3af; }     /* no push */
+  .update .mech-lab { font-size: 11px; font-weight: 800; text-align: right; line-height: 1.2; }
+  .update .mech-lab .sub { display: block; font-weight: 600; color: #64748b; font-size: 10px; }
+  .update .eff { font-size: 11px; font-weight: 700; }
+  .update .eff.none { color: #9ca3af; }
+  .update .eff.targeted { color: #2563eb; }
+  .policy-node { display: inline-flex; align-items: center; gap: 5px; font-weight: 800;
+                 font-size: 12px; color: #db2777; border: 1.5px solid #f9a8d4; border-radius: 8px;
+                 padding: 3px 8px; background: #fdf2f8; }
+  .midline { text-align: center; font-size: 11px; color: #64748b; margin: 7px 0 3px; font-weight: 700; }
   .contrib .pt b { color: #9d174d; }
   .contrib .tag { display: inline-block; background: #db2777; color: #fff; font-size: 10px;
                   font-weight: 800; padding: 1px 7px; border-radius: 6px; margin-right: 6px; }
@@ -214,7 +232,29 @@
             </div>
             <div class="verdict">scores vary → Δ≠0<br>✓ still learns</div>
           </div>
-          <div class="cap">Same failed trajectory (outcome = fail). Segment scores reward the parts that worked and punish the failure point — so learning continues where outcome-RL gets nothing.</div>
+          <div class="midline">↓ credit assigned to each segment → PPO policy update ↓</div>
+          <div class="update">
+            <div class="seg-credit" style="margin-bottom:4px">
+              <div class="mech-lab">Outcome-RL<span class="sub">one scalar</span></div>
+              <div class="credits">
+                <div class="cr flat">·</div><div class="cr flat">·</div>
+                <div class="cr flat">·</div><div class="cr flat">·</div>
+              </div>
+              <div class="eff none">flat / 0 → policy unchanged</div>
+            </div>
+            <div class="seg-credit">
+              <div class="mech-lab">SeRPO<span class="sub">per segment</span></div>
+              <div class="credits">
+                <div class="cr up">▲</div><div class="cr up">▲</div>
+                <div class="cr down">▼</div><div class="cr up">▲</div>
+              </div>
+              <div class="eff targeted">reinforce good · suppress failure step</div>
+            </div>
+            <div style="text-align:center;margin-top:8px">
+              <span class="policy-node">🤖 π<sub>policy</sub> updated — failure segment corrected</span>
+            </div>
+          </div>
+          <div class="cap">Same failed trajectory. Outcome-RL spreads one scalar (0 here) over every token → no targeted push. SeRPO sends <b>+credit</b> to the segments that worked and <b>−credit</b> to the failure step, so PPO updates the policy <i>precisely where it went wrong</i>.</div>
         </div>
       </div>
       <div class="pt">
