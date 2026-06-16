@@ -26,10 +26,13 @@
   .stage { margin-bottom: 12px; }
   .stage .lab { font-size: 11px; font-weight: 800; color: #475569; letter-spacing: .03em;
                 text-transform: uppercase; margin-bottom: 5px; }
-  .segrow { display: flex; gap: 6px; }
-  .cellbox { flex: 1; height: 36px; border-radius: 7px; display: flex; align-items: center;
-             justify-content: center; font-size: 14px; font-weight: 800;
+  /* Segment cells stacked VERTICALLY (one per row) so each column stays narrow. */
+  .segrow { display: flex; flex-direction: column; gap: 6px; }
+  .cellbox { width: 100%; height: 30px; border-radius: 7px; display: flex; align-items: center;
+             justify-content: center; gap: 8px; font-size: 14px; font-weight: 800;
              border: 1px solid rgba(0,0,0,.12); }
+  .cellbox .seglab { font-size: 10px; font-weight: 700; color: #64748b; min-width: 22px;
+                     text-align: left; }
   /* trajectory tokens */
   .seg { background: #eef2f7; color: #334155; flex-direction: column; font-size: 10px; gap: 1px; }
   .seg b { font-size: 12px; }
@@ -64,24 +67,30 @@
         <div class="stage">
           <div class="lab">1 · reward — one scalar for the whole trajectory</div>
           <div class="segrow">
-            <div class="cellbox gray">r = 0</div><div class="cellbox gray">r = 0</div>
-            <div class="cellbox gray">r = 0</div><div class="cellbox gray">r = 0</div>
+            <div class="cellbox gray"><span class="seglab">s₁</span>r = 0</div>
+            <div class="cellbox gray"><span class="seglab">s₂</span>r = 0</div>
+            <div class="cellbox gray"><span class="seglab">s₃</span>r = 0</div>
+            <div class="cellbox gray"><span class="seglab">s₄</span>r = 0</div>
           </div>
         </div>
         <div class="arrow">↓ group-normalize: Â = (r − mean)/std</div>
         <div class="stage">
           <div class="lab">2 · advantage Âᵢ — all rollouts failed → std = 0</div>
           <div class="segrow">
-            <div class="cellbox gray">0</div><div class="cellbox gray">0</div>
-            <div class="cellbox gray">0</div><div class="cellbox gray">0</div>
+            <div class="cellbox gray"><span class="seglab">s₁</span>0</div>
+            <div class="cellbox gray"><span class="seglab">s₂</span>0</div>
+            <div class="cellbox gray"><span class="seglab">s₃</span>0</div>
+            <div class="cellbox gray"><span class="seglab">s₄</span>0</div>
           </div>
         </div>
         <div class="arrow">↓ PPO: ∇ ∝ Â · ∇log π</div>
         <div class="stage">
           <div class="lab">3 · effect on policy π</div>
           <div class="segrow">
-            <div class="cellbox gray">—</div><div class="cellbox gray">—</div>
-            <div class="cellbox gray">—</div><div class="cellbox gray">—</div>
+            <div class="cellbox gray"><span class="seglab">s₁</span>—</div>
+            <div class="cellbox gray"><span class="seglab">s₂</span>—</div>
+            <div class="cellbox gray"><span class="seglab">s₃</span>—</div>
+            <div class="cellbox gray"><span class="seglab">s₄</span>—</div>
           </div>
         </div>
         <div class="note bad">Â = 0 on every token → gradient = 0 → <b>no parameter update</b>. The failing
@@ -97,24 +106,30 @@
         <div class="stage">
           <div class="lab">1 · reward — one per segment</div>
           <div class="segrow">
-            <div class="cellbox s5">5</div><div class="cellbox s4">4</div>
-            <div class="cellbox s1 fail">1</div><div class="cellbox s4">4</div>
+            <div class="cellbox s5"><span class="seglab">s₁</span>5</div>
+            <div class="cellbox s4"><span class="seglab">s₂</span>4</div>
+            <div class="cellbox s1 fail"><span class="seglab">s₃</span>1</div>
+            <div class="cellbox s4"><span class="seglab">s₄</span>4</div>
           </div>
         </div>
         <div class="arrow">↓ normalize within trajectory: Â varies</div>
         <div class="stage">
           <div class="lab">2 · advantage Âᵢ — differs across segments</div>
           <div class="segrow">
-            <div class="cellbox pos">+</div><div class="cellbox pos">+</div>
-            <div class="cellbox neg fail">−</div><div class="cellbox pos">+</div>
+            <div class="cellbox pos"><span class="seglab">s₁</span>+</div>
+            <div class="cellbox pos"><span class="seglab">s₂</span>+</div>
+            <div class="cellbox neg fail"><span class="seglab">s₃</span>−</div>
+            <div class="cellbox pos"><span class="seglab">s₄</span>+</div>
           </div>
         </div>
         <div class="arrow">↓ PPO: ↑π if Â&gt;0, ↓π if Â&lt;0</div>
         <div class="stage">
           <div class="lab">3 · effect on policy π</div>
           <div class="segrow">
-            <div class="cellbox pos">π↑</div><div class="cellbox pos">π↑</div>
-            <div class="cellbox neg fail">π↓</div><div class="cellbox pos">π↑</div>
+            <div class="cellbox pos"><span class="seglab">s₁</span>π↑</div>
+            <div class="cellbox pos"><span class="seglab">s₂</span>π↑</div>
+            <div class="cellbox neg fail"><span class="seglab">s₃</span>π↓</div>
+            <div class="cellbox pos"><span class="seglab">s₄</span>π↑</div>
           </div>
         </div>
         <div class="note good">Â ≠ 0 within the trajectory → gradient ≠ 0. PPO <b>raises</b> π for the
