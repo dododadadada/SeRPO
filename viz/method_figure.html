@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>SeRPO — Method Figure</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #1f2937;
+         font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .fig { max-width: 1180px; margin: 24px auto; padding: 0 16px; }
+  .stages { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 14px; align-items: stretch; }
+  .stage { border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 12px; background: #fff;
+           display: flex; flex-direction: column; }
+  .stage h3 { margin: 0 0 10px; font-size: 14px; font-weight: 800; text-align: center; color: #0f172a; }
+  .panel-note { font-size: 11px; color: #64748b; text-align: center; margin-top: auto; }
+
+  /* shared bits */
+  .row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .chip { border-radius: 8px; padding: 5px 9px; font-size: 12px; font-weight: 700; }
+  .pi { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; font-size: 13px; }
+  .pi .robot { font-size: 16px; }
+  .ref { color: #16a34a; } .hind { color: #2563eb; } .sprm { color: #16a34a; } .policy { color: #db2777; }
+  .arrow-dn { text-align: center; color: #94a3b8; font-size: 18px; line-height: 1; margin: 6px 0; }
+  .between { display: flex; align-items: center; justify-content: center; font-size: 26px;
+             color: #94a3b8; }
+
+  /* stage 1 */
+  .db { border: 1.5px solid #475569; border-radius: 8px; padding: 6px 10px; font-size: 12px;
+        background: #f8fafc; font-weight: 700; }
+  .env-globe { font-size: 26px; }
+
+  /* stage 2: trajectory tape */
+  .tape { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .tok { width: 30px; height: 26px; border-radius: 5px; display: flex; align-items: center;
+         justify-content: center; font-size: 11px; font-weight: 700; border: 1px solid #94a3b8; }
+  .tok.o { background: #dbeafe; color: #1e3a8a; }
+  .tok.a { background: #fce7f3; color: #9d174d; }
+  .seg { display: flex; gap: 6px; justify-content: center; align-items: center; margin: 6px 0; }
+  .s-node { width: 30px; height: 30px; border-radius: 50%; background: #e2e8f0; border: 1.5px solid #64748b;
+            display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .subbox { border: 1px dashed #cbd5e1; border-radius: 10px; padding: 8px; }
+  .subbox .cap { font-size: 11px; font-weight: 700; text-align: center; color: #475569; margin-bottom: 6px; }
+  .bars { display: flex; gap: 6px; align-items: flex-end; justify-content: center; height: 46px; }
+  .bar { width: 16px; background: #93c5fd; border-radius: 3px 3px 0 0; }
+  .bar.r { background: #86efac; }
+  .scorelabels { display: flex; gap: 6px; justify-content: center; font-size: 10px; color: #64748b; }
+  .train-tag { font-size: 10px; color: #dc2626; font-weight: 800; }
+
+  /* stage 3 */
+  .rewardset { background: #ecfdf5; border: 1.5px solid #6ee7b7; border-radius: 10px;
+               padding: 7px 10px; font-size: 13px; font-weight: 800; color: #065f46; text-align: center; }
+  .modbox { background: #eef2ff; border: 1.5px solid #c7d2fe; border-radius: 10px; padding: 7px 10px;
+            text-align: center; font-size: 13px; font-weight: 800; color: #3730a3; }
+  .modulated { background: #fff7ed; border: 1.5px solid #fdba74; border-radius: 10px; padding: 7px 10px;
+               font-size: 12.5px; font-weight: 800; color: #9a3412; text-align: center; }
+
+  /* contribution box */
+  .contrib { margin-top: 16px; border: 2px solid #db2777; border-left: 7px solid #db2777;
+             border-radius: 12px; padding: 14px 16px; background: #fdf2f8; }
+  .contrib h4 { margin: 0 0 10px; font-size: 14px; color: #9d174d; letter-spacing: .02em; }
+  .contrib .pts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .contrib .pt { font-size: 13px; line-height: 1.5; }
+  .contrib .pt b { color: #9d174d; }
+  .contrib .tag { display: inline-block; background: #db2777; color: #fff; font-size: 10px;
+                  font-weight: 800; padding: 1px 7px; border-radius: 6px; margin-right: 6px; }
+  .contrib .eq { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+                 background: #fff; border: 1px solid #f5d0e4; border-radius: 6px; padding: 1px 5px; }
+  .zero { color: #dc2626; font-weight: 800; }
+  .nonzero { color: #16a34a; font-weight: 800; }
+  .figtitle { text-align: center; font-size: 16px; font-weight: 800; margin: 4px 0 16px; color: #0f172a; }
+</style>
+</head>
+<body>
+<div class="fig">
+  <div class="figtitle">SeRPO: Segment-level Rubric Process Rewards for AppWorld Agents</div>
+
+  <div class="stages">
+    <!-- ================= STAGE 1 ================= -->
+    <div class="stage">
+      <h3>Behavior Cloning &amp; Trajectory Collection</h3>
+      <div class="row" style="gap:14px">
+        <div class="db">📚 D<sub>bc</sub></div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:#64748b">Behavior Cloning</div>
+          <div style="font-size:20px;color:#94a3b8">→</div>
+        </div>
+        <div class="pi ref"><span class="robot">🤖</span>π<sub>ref</sub></div>
+      </div>
+      <div class="arrow-dn">↓ task</div>
+      <div class="row"><div class="pi ref"><span class="robot">🤖</span>π<sub>ref</sub> (cloned)</div></div>
+      <div class="arrow-dn">↓ a<sub>t</sub> | o<sub>t</sub></div>
+      <div class="row"><span class="env-globe">🌐</span><span style="font-size:12px;color:#475569">environment</span></div>
+      <div class="arrow-dn">↓</div>
+      <div class="row"><div class="db">🗃️ D<sub>ct</sub> &nbsp;collected trajectories</div></div>
+      <div class="panel-note">Clone π<sub>ref</sub>, roll out, collect D<sub>ct</sub></div>
+    </div>
+
+    <div class="between">⇒</div>
+
+    <!-- ================= STAGE 2 ================= -->
+    <div class="stage" style="grid-column: 2 / 3;">
+      <h3>Hindsight Modulated Segmental Process Rewards</h3>
+      <div style="font-size:11px;color:#64748b;text-align:center;margin-bottom:4px">collected trajectory τ ∈ D<sub>ct</sub></div>
+      <div class="tape">
+        <div class="tok o">o₁</div><div class="tok a">a₁</div>
+        <div class="tok o">o₂</div><div class="tok a">a₂</div>
+        <div class="tok o">o₃</div><div class="tok a">a₃</div>
+        <div class="tok o">o₄</div><div class="tok a">a₄</div>
+        <div class="tok o">o₅</div><div class="tok a">a₅</div>
+      </div>
+      <div style="font-size:10px;color:#64748b;text-align:center">segment → sub-goals</div>
+      <div class="seg">
+        <div class="s-node">s₁</div><span style="color:#94a3b8">—</span>
+        <div class="s-node">s₂</div><span style="color:#94a3b8">—</span>
+        <div class="s-node">s₃</div>
+      </div>
+
+      <div class="twocol">
+        <div class="subbox">
+          <div class="cap"><span class="train-tag">training 🔥</span> SPRM</div>
+          <div class="row"><span class="pi sprm">🤖</span></div>
+          <div style="text-align:center;font-size:11px;color:#475569;margin:4px 0">infer → segmental rewards</div>
+          <div class="bars">
+            <div class="bar r" style="height:70%"></div>
+            <div class="bar r" style="height:40%"></div>
+            <div class="bar r" style="height:95%"></div>
+          </div>
+          <div class="scorelabels"><span>r̂₁</span><span>r̂₂</span><span>r̂₃</span></div>
+        </div>
+        <div class="subbox">
+          <div class="cap"><span class="train-tag">training 🔥</span> π<sub>hind</sub> (mask aᵢ)</div>
+          <div class="row"><span class="pi hind">🤖</span></div>
+          <div style="text-align:center;font-size:11px;color:#475569;margin:4px 0">infer → importance scores</div>
+          <div class="bars">
+            <div class="bar" style="height:50%"></div>
+            <div class="bar" style="height:85%"></div>
+            <div class="bar" style="height:60%"></div>
+          </div>
+          <div class="scorelabels"><span>ẑ₁</span><span>ẑ₂</span><span>ẑ₃</span></div>
+        </div>
+      </div>
+      <div class="panel-note">SPRM scores each segment; π<sub>hind</sub> weights by importance</div>
+    </div>
+
+    <div class="between">⇒</div>
+
+    <!-- ================= STAGE 3 ================= -->
+    <div class="stage" style="grid-column: 3 / 4;">
+      <h3>Reinforcement Learning</h3>
+      <div style="font-size:11px;color:#64748b;text-align:center;margin-bottom:6px">grounding reward</div>
+      <div class="rewardset">{ r̂<sub>1,g</sub>, r̂<sub>2,g</sub>, r̂<sub>3,g</sub> }</div>
+      <div class="arrow-dn">↓ rewards × importance</div>
+      <div class="modbox">modulation</div>
+      <div class="arrow-dn">↓</div>
+      <div class="modulated">modulated process rewards<br>{ r̂<sub>1,him</sub>, r̂<sub>2,him</sub>, r̂<sub>3,him</sub> }</div>
+      <div class="arrow-dn">↓ update via PPO</div>
+      <div class="row"><div class="pi policy"><span class="robot">🤖</span>π<sub>policy</sub></div></div>
+      <div class="panel-note">Per-segment rewards drive the PPO update</div>
+    </div>
+  </div>
+
+  <!-- ================= CONTRIBUTION BOX ================= -->
+  <div class="contrib">
+    <h4>Why segment-level process rewards matter</h4>
+    <div class="pts">
+      <div class="pt">
+        <span class="tag">LEARNS WHERE OUTCOME RL CAN'T</span><br>
+        On <b>fail-only</b> trajectories every rollout shares the same outcome, so
+        outcome-reward baselines (Vanilla&nbsp;GRPO, GiGPO) get equal rewards →
+        group variance 0 → <span class="zero">gradient = 0</span> (no learning).
+        SeRPO's <b>per-segment</b> rewards still vary within a trajectory →
+        <span class="nonzero">gradient ≠ 0</span>, so the policy keeps improving even
+        when all trajectories failed.
+      </div>
+      <div class="pt">
+        <span class="tag">LOCATES THE FAILURE POINT</span><br>
+        A single outcome scalar says only <i>pass / fail</i>. Per-segment rewards
+        <b>{ r̂₁, r̂₂, r̂₃ }</b> attribute credit along the trajectory, so a low-scoring
+        segment <b>pinpoints which step caused the failure</b> (e.g. a premature action
+        with missing API exploration) — turning an opaque rollout into a diagnosable,
+        interpretable signal.
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
