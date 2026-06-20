@@ -8,11 +8,6 @@ these per-segment scores are used as the advantage signal for GRPO-style policy
 optimization. SeRPO is evaluated on the [AppWorld](https://appworld.dev) benchmark
 with Qwen3.5-9B.
 
-## Materials
-
-- 📄 **Paper:** _(PDF to be added)_
-- 📊 **Slides:** _(PDF/PPT to be added)_
-
 ## Method overview
 
 - **Segmentation + scoring:** a single LLM-judge call splits a trajectory into
