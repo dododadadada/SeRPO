@@ -21,24 +21,33 @@ Neither variant changes the output JSON schema or any downstream consumer.
 
 Two independent changes, each in its own file. Both keep the joint segmentation + 1–5 contribution rubric and the existing output JSON schema.
 
-### `_shortstep`: efficiency penalty in the rubric
+### `_shortstep`: task-level cleanliness cap
 
-Inject an **efficiency penalty** into the existing 1–5 rubric so that:
+Inject a **task-level cleanliness cap** into the existing 1–5 rubric so that:
 
-- A clean, short-path segment earns 5.
-- A successful recovery segment (one where a prior segment failed at the same subgoal) is **capped at 4**.
+- A clean trajectory (no segment with `contribution <= 2`) can earn segments scoring up to 5.
+- If **any** segment in the trajectory failed (1 or 2), **every other non-completion segment** in that trajectory is capped at 4, regardless of whether they were individually clean or pursued unrelated subgoals.
+- The final `completion` segment is exempt from the cap — it is still graded on evaluation outcome only (5 correct, 1 wrong, 3 near-miss).
 - A failed segment continues to score 1–2 as in the baseline.
 
-The cap is preferred over a per-step subtraction rule because the LLM can reliably detect "did an earlier segment in this trajectory fail at this same subgoal?" but is unreliable at estimating a counterfactual minimum step count for AppWorld tasks.
+**Why task-level, not per-subgoal.** An earlier per-subgoal cap (cap only segments pursuing the same subgoal as an earlier failure) had a known failure mode: it incentivized the model to over-split a coherent phase into many small "subgoals" so each tiny piece could claim "clean first attempt = 5". The task-level rule removes that incentive entirely — splitting cannot manufacture more 5s, because the existence of any failed segment caps the whole trajectory.
 
-### `_giveup`: post-processing truncation at abandoned subgoals
+The cap is preferred over a per-step subtraction rule because the LLM can reliably detect "did anything fail in this trajectory?" but is unreliable at estimating a counterfactual minimum step count for AppWorld tasks.
 
-Keep the baseline rubric prompt unchanged. After the model returns segments for the full trajectory, walk the segments and **truncate at the first abandoned-subgoal failure**:
+**Anti-over-splitting guardrails.** Two prompt-level guardrails reinforce the task-level cap:
+
+1. The Efficiency anchor is reframed as a *cross-trajectory* tiebreaker (fewer wasted steps overall), with an explicit prohibition: "do NOT split a coherent phase into smaller pieces just to claim each piece was 'done in few steps'."
+2. The Granularity block adds: "Score-driven splitting is not allowed. Boundaries are determined by phase changes only, never by trying to maximize how many segments can claim a high score."
+
+### `_giveup`: post-processing truncation after abandoned subgoals
+
+Keep the baseline rubric prompt unchanged. After the model returns segments for the full trajectory, walk the segments and **truncate everything after the first abandoned-subgoal failure**:
 
 - A segment is "failed" if its `contribution` ≤ 2.
 - A failed segment is "abandoned" if the next segment has a different `subgoal` AND different `type` (i.e., the agent moved on rather than retrying).
-- When this pattern is found, drop the failed segment and every segment after it. Re-derive `trajectory_text` and `num_steps` from the kept-segment range so downstream consumers see a consistent record.
-- A failed segment followed by a same-subgoal recovery attempt is **kept** — that's a legitimate retry and is what `_shortstep` is designed to score.
+- When this pattern is found, **keep the failed segment** and drop every segment strictly after it. The failed segment is retained because it is the negative training signal the policy needs to learn from; the discarded segments are the ones that pollute the per-rollout reward because they worked on a different subgoal.
+- Re-derive `trajectory_text` and `num_steps` from the kept range so downstream consumers see a consistent record.
+- A failed segment followed by a same-subgoal recovery attempt is left intact — that's a legitimate retry and is what `_shortstep` is designed to score.
 - If no abandoned-failure pattern exists, the record is identical to baseline.
 
 The model scores the full untruncated trajectory (it needs the full context to assign correct scores). Truncation is applied in Python, is deterministic, and is reflected only in the saved JSON.
@@ -61,25 +70,27 @@ All three variants must coexist; `load_already_done()` keys on filename, so the 
 
 ## Changes inside `run_rollouts_KS_shortstep.py`
 
-### Prompt edits (three surgical additions to `JOINT_SEGMENT_REWARD_PROMPT`)
+### Prompt edits (four edits to `JOINT_SEGMENT_REWARD_PROMPT`)
 
 Everything else — template slots `{instruction}`, `{trajectory}`, `{evaluation_summary}`; the 7 phase types; the 1–5 contribution schema; the output JSON shape; the post-processing pipeline (`validate_segments`, `merge_consecutive_same_score`) — is unchanged.
 
-**Edit 1 — new "Efficiency" anchor inside the 1–5 rubric block:**
+**Edit 1 — new "Efficiency" anchor inside the 1–5 rubric block (reframed as cross-trajectory tiebreaker with anti-split prohibition):**
 
-> **Efficiency matters within a score band.** A segment that completes its subgoal in fewer steps is strictly better than one that takes more steps. A clean short-path segment earns the top of its band; an inefficient one earns the bottom.
+> **Efficiency matters within a score band.** Within the same score, a trajectory that reaches its goal with fewer wasted steps overall is better than one with more wasted steps. Use this as a tiebreaker between similar segments; do NOT split a coherent phase into smaller pieces just to claim each piece was "done in few steps". Segmentation granularity is governed by the segmentation rules above, not by score-maximization.
 
-**Edit 2 — new explicit ordering rule in "Anchoring principles":**
+**Edit 2 — task-level cleanliness cap in "Anchoring principles":**
 
-> **Successful recovery is capped at 4, not 5.** Score 5 is reserved for segments that achieved their subgoal cleanly on the first attempt with no prior failed segment pursuing the same subgoal. If an earlier segment in the trajectory failed at the same subgoal (e.g., a hallucinated-API crash for the same data lookup), the segment that finally succeeds at that subgoal scores 4 even if its own execution is clean. Rationale: the total trajectory cost includes the wasted prior steps, and we want to reward the policy that gets it right the first time over one that recovers.
+> **Score 5 requires a fully clean trajectory (task-level cap).** Score 5 is reserved for segments in trajectories where **no segment** has `contribution <= 2`. If **any** segment in this trajectory failed (1 or 2) — regardless of whether it was the same subgoal or a different one — then no other segment in the trajectory can score above 4. This is a per-trajectory rule, not per-subgoal: one failed segment anywhere caps every non-completion segment at 4. Rationale: the policy we want is one that completes the whole task cleanly; partial cleanliness on independent subgoals does not earn the top score. The final `completion` segment is the only exception.
 
-**Edit 3 — update the existing AppWorld failure-pattern block so its score band is consistent with the new cap.** Change:
+**Edit 3 — update the existing AppWorld failure-pattern block to reflect task-level scope:**
 
-> The subsequent recovery segment that finds the right API and makes progress gets **4-5** — it did real productive work, even if it wouldn't have been needed without the earlier mistake.
+> The subsequent recovery segment that finds the right API and makes progress gets **4** (capped at 4 because this trajectory contains a failed segment) — it did real productive work, even if it wouldn't have been needed without the earlier mistake.
+>
+> All other non-completion segments in this trajectory (e.g., the earlier clean `login` segment, an unrelated clean `data_fetch` later on) are also capped at 4 by the task-level rule above, even though they were individually clean. Only the final `completion` segment can still score 5 if the answer is correct.
 
-to:
+**Edit 4 — anti-over-splitting line in the Granularity block:**
 
-> The subsequent recovery segment that finds the right API and makes progress gets **4** (capped because a prior segment failed at the same subgoal) — it did real productive work, even if it wouldn't have been needed without the earlier mistake.
+> **Score-driven splitting is not allowed.** Boundaries are determined by phase changes only, never by trying to maximize how many segments can claim a high score. A coherent multi-step phase stays as ONE segment even if splitting it would let smaller pieces look "cleaner". If you find yourself considering a boundary because it would change a contribution value, ignore that consideration — the segmentation rules above are the only valid reason to draw a boundary.
 
 ### What is explicitly NOT changed (shortstep)
 
@@ -101,37 +112,36 @@ Inserted in `process_rollout()` after `merge_consecutive_same_score()` and befor
 ```python
 def truncate_at_abandoned_failure(segments: list[dict]) -> tuple[list[dict], Optional[int]]:
     """Return (kept_segments, cut_at_step_or_None).
-    Truncate at the first failed (contribution<=2) segment whose successor
-    has a different subgoal AND a different type. The failed segment itself
-    is dropped along with everything after it. Returns the new effective
-    end_step (the end_step of the last KEPT segment) so the trajectory text
-    and num_steps can be re-derived consistently.
+    Find the first failed (contribution<=2) segment whose successor has a
+    different subgoal AND a different type (= subgoal was abandoned). KEEP
+    that failed segment (it is the negative training signal) and drop
+    everything strictly AFTER it. Returns the new effective end_step (the
+    failed segment's end_step) so the trajectory text and num_steps can be
+    re-derived consistently.
     """
     for i, seg in enumerate(segments):
         if seg["contribution"] > 2:
             continue
         if i + 1 >= len(segments):
-            continue  # failed segment is last; nothing to truncate after
+            continue  # failed segment is last; nothing to truncate
         nxt = segments[i + 1]
         same_subgoal = (seg.get("subgoal", "").strip().lower()
                         == nxt.get("subgoal", "").strip().lower())
         same_type = (seg.get("type") == nxt.get("type"))
         if same_subgoal or same_type:
-            continue  # legitimate retry, keep
-        kept = segments[:i]
-        if not kept:
-            return segments, None  # nothing kept — fall back to no truncation
+            continue  # legitimate retry, keep everything after
+        kept = segments[:i + 1]  # include the failed segment itself
         return kept, kept[-1]["end_step"]
     return segments, None
 ```
 
 After truncation, when `cut_at_step` is not None, also:
 
-- Filter `steps` to only those with `step <= cut_at_step`, then re-build `trajectory_text = format_trajectory(steps_kept)`.
+- Filter `steps` to only those with `step <= cut_at_step`, then re-build `trajectory_text = format_trajectory(steps_kept)`. This keeps the steps that belong to the failed-and-kept segment and drops everything after.
 - Recompute `num_steps`, `num_segments`, `num_raw_segments`, `mean_contribution`, `min_contribution`, `max_contribution` on the kept segments.
 - Add two new top-level fields to the saved record so the truncation is auditable:
-  - `"truncated_at_step": cut_at_step` (or `null` if no truncation applied)
-  - `"truncated_segments_dropped": <int>` (count of segments removed, 0 if untruncated)
+  - `"truncated_at_step": cut_at_step` (= end_step of the failed segment, or `null` if no truncation applied)
+  - `"truncated_segments_dropped": <int>` (count of segments removed from after the failed one, 0 if untruncated)
 
 These are additive fields only — the existing schema fields all remain present.
 
@@ -164,7 +174,7 @@ and visually compare the resulting `pretty_shortstep/seed_1__*.json` and `pretty
 
 Expectations:
 
-- **Shortstep:** on rollouts that contain a hallucinated-API crash followed by a successful recovery, the recovery segment scores 4 versus 4–5 in the baseline; clean trajectories largely unchanged.
+- **Shortstep:** on rollouts that contain any failed segment (1 or 2), **all** non-completion segments are capped at 4 — including segments that were individually clean and pursued unrelated subgoals. Fully clean trajectories are unchanged from baseline. Segment counts should be similar to baseline (no over-splitting); if a shortstep rollout produces noticeably more segments than its baseline counterpart, the anti-split guardrails are not landing and the prompt needs revisiting.
 - **Giveup:** records that include a failed-and-abandoned subgoal have `truncated_at_step` set and `num_steps` ≤ baseline. Records without that pattern have `truncated_at_step: null` and are byte-equivalent on shared fields to the baseline record.
 
 Full 720-rollout runs and downstream SeRPO ablations are out of scope for this spec — they are training-pipeline work tracked separately.

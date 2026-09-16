@@ -1,0 +1,14 @@
+# 5-round verification run: confirm online learning is healthy (kl stable, reward
+# signal present, no divergence) before committing to a multi-day run.
+# Snapshots every round so the full short curve is eval-able. Gen server on GPU 3.
+M: 6
+G: 8
+K: 1
+N_rounds: 5
+gen_ports: [8101]
+adapter_dir: grpo_online/runs/v1/adapter_current
+output_dir: grpo_online/runs/v1
+ckpt_every: 1
+appworld_num_processes: 4
+rubric_api_model: gpt-4o-mini
+rubric_api_key_env: OPENAI_API_KEY

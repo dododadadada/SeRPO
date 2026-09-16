@@ -1,0 +1,69 @@
+# Resume of serpo_9b_failtraj_v3i from step_55 → step 70, reusing base precache.
+#
+# Continues the run that was killed at step 58 (dev peaked at step_55=22.8). Adds
+# dev points at step_60/65/70. K_steps=76 kept so the on-disk K76 precache
+# (old_logp=ref_logp=base, computed once at fresh init) validates and LOADS —
+# reuse_precache_on_resume=true skips the ~3h re-precache. Training is stopped
+# manually after the step_70 checkpoint saves; we do NOT run to 76.
+#
+# Run on 2 GPUs (CUDA_VISIBLE_DEVICES=1,2): device_map=auto shards the 9B base
+# across both (~33GB/GPU peak), avoiding the single-GPU fragmentation OOM seen
+# on the earlier 1-GPU resume attempt.
+
+model_name: Qwen/Qwen3.5-9B
+parquet_path: grpo/data/round0_9b/serpo_failtraj_binary.parquet
+output_dir: grpo/ckpts/serpo_9b_failtraj_v3i/round1
+
+resume_from: grpo/ckpts/serpo_9b_failtraj_v3i/round1/step_55
+reuse_precache_on_resume: true
+
+K_steps: 76
+mini_batch_size: 16
+micro_batch_size: 1
+precache_micro_batch_size: 1   # MUST equal micro_batch_size (v3-F root-cause fix)
+
+lr: 1.0e-6
+use_8bit_optim: false
+weight_decay: 0.0
+adam_beta1: 0.9
+adam_beta2: 0.999
+warmup_ratio: 0.0
+lr_scheduler_type: constant
+
+clip_eps: 0.2
+kl_beta: 0.04
+grad_clip: 1.0
+
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - in_proj_qkv
+  - in_proj_z
+  - in_proj_b
+  - in_proj_a
+  - out_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+load_in_4bit: false
+
+save_every_n_steps: 5          # earlier checkpoints for partial evaluation
+kl_halt_threshold: 5.0
+step0_kl_tolerance: 1.0e-3
+ratio_halt_threshold: 30.0   # log(30)=3.4 > masked valid_max(3.0): consistent backstop
+kl_per_token_cap: 10.0         # THE v3-G fix: bound outlier (artifact) tokens
+
+wandb_project: appworld-grpo-9b
+wandb_run_name: serpo_9b_failtraj_v3i_resume70
+
+seed: 42
+log_every: 1
+gradient_checkpointing: true
+outlier_logratio_threshold: 3.0    # v3-I: mask the 0.2% |log_ratio|>3 tail (diag_logratio_dist)
+max_masked_fraction: 0.05          # halt only if a step masks >5% tokens (real divergence)

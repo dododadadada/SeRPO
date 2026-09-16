@@ -11,6 +11,10 @@ class OnlineConfig:
     N_rounds: int = 76
     dataset: str = "train"
     outcome_type: str = "continuous"  # "continuous" (frac tests passed) | "binary"
+    # AppWorld worker processes per rollout invocation. Caps how many tasks (and
+    # hence concurrent gen-server requests) run at once; raise toward M to keep
+    # the concurrent gen server busy. Each worker is a CPU process (~0.8 GB RAM).
+    appworld_num_processes: int = 4
     temperature: float = 1.0
     top_p: float = 1.0
     lr: float = 1e-6
@@ -37,6 +41,10 @@ class OnlineConfig:
     gen_ports: list = field(default_factory=lambda: [8101])
     adapter_dir: str = "grpo_online/runs/v1/adapter_current"
     output_dir: str = "grpo_online/runs/v1"
+    # Snapshot the adapter to output_dir/ckpt_round_<n> every ckpt_every rounds
+    # (in addition to overwriting adapter_dir each round), so a checkpoint curve
+    # survives for later eval. 0 disables snapshotting.
+    ckpt_every: int = 5
     rubric_api_model: str = "gpt-4o-mini"
     rubric_api_base: str = ""
     rubric_api_key_env: str = "OPENAI_API_KEY"

@@ -50,6 +50,26 @@ def test_empty_round_is_skipped(tmp_path):
     assert [o for o in order if o[0] == "reload"] == [("reload", str(tmp_path / "ad"))]
 
 
+def test_loop_resumes_from_start_round(tmp_path):
+    """start_round=3 with N_rounds=5 must roll out only rounds 3,4,5 (resume),
+    and report `done` reflecting the resume offset."""
+    rounds_rolled = []
+    deps = Deps(
+        all_tasks=["t1", "t2", "t3"],
+        rollout=lambda rnd, tasks: (rounds_rolled.append(rnd) or
+                                    [{"task_id": tasks[0], "seed": 1, "lm_calls_path": "x", "outcome": 1.0}]),
+        judge=lambda p: [{"contribution": 3, "start_step": 1, "end_step": 1}],
+        tokenizer=None, trainer=FakeTrainer(),
+        reload_servers=lambda path: None,
+        score_round=lambda items, tok, judge: items,
+    )
+    cfg = type("C", (), {"M": 1, "K": 1, "N_rounds": 5, "adapter_dir": str(tmp_path / "ad"),
+                         "kl_halt_threshold": 5.0, "seed": 0})()
+    done = run_online(cfg, deps, start_round=3)
+    assert rounds_rolled == [3, 4, 5]
+    assert done == 5
+
+
 def test_loop_halts_on_kl(tmp_path):
     class Boom(FakeTrainer):
         def train_on_batch(self, rds, K): return {"kl_loss": 99.0, "loss": 1.0}

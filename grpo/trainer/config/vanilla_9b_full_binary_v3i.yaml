@@ -1,0 +1,68 @@
+# SeRPO GRPO Round-1 on Qwen3.5-9B (v3-G: cache-fix + outlier-token KL cap).
+#
+# Builds on v3-F (which PROVED the cache-micro-size root cause: step 0 kl=0.0).
+# v3-F then halted at step 1 kl=80.4, which diag_step1_perseq.py attributed to a
+# SINGLE long sequence (seq 10, 21878 resp tokens): a few tokens hit
+# |ref_logp-new_logp|≈19.5 (bf16 long-sequence linear-attn artifact), k3≈5e6,
+# dragging the 71915-token mean to 80. The policy itself barely moved (15/16
+# sequences kl≈5e-4). Fix = per-token KL cap (kl_per_token_cap, default 10.0):
+# bounds the metric AND zeroes the gradient for artifact tokens. Normal tokens
+# peak at k3≈0.36, so the cap never touches real signal.
+#
+# Reuses the v3-F micro=1 pre-cache (cache key no longer includes
+# target_modules/rank/alpha — identical at fresh init — so NO recache needed).
+
+model_name: Qwen/Qwen3.5-9B
+parquet_path: grpo/data/round0_9b/vanilla_full_binary.parquet
+output_dir: grpo/ckpts/vanilla_9b_full_binary_v3i/round1
+
+K_steps: 76
+mini_batch_size: 16
+micro_batch_size: 1
+precache_micro_batch_size: 1   # MUST equal micro_batch_size (v3-F root-cause fix)
+
+lr: 1.0e-6
+use_8bit_optim: false
+weight_decay: 0.0
+adam_beta1: 0.9
+adam_beta2: 0.999
+warmup_ratio: 0.0
+lr_scheduler_type: constant
+
+clip_eps: 0.2
+kl_beta: 0.04
+grad_clip: 1.0
+
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - in_proj_qkv
+  - in_proj_z
+  - in_proj_b
+  - in_proj_a
+  - out_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+load_in_4bit: false
+
+save_every_n_steps: 5          # earlier checkpoints for partial evaluation
+kl_halt_threshold: 5.0
+step0_kl_tolerance: 1.0e-3
+ratio_halt_threshold: 30.0   # log(30)=3.4 > masked valid_max(3.0): consistent backstop
+kl_per_token_cap: 10.0         # THE v3-G fix: bound outlier (artifact) tokens
+
+wandb_project: appworld-grpo-9b
+wandb_run_name: vanilla_9b_full_binary_v3i_outliermask
+
+seed: 42
+log_every: 1
+gradient_checkpointing: true
+outlier_logratio_threshold: 3.0    # v3-I: mask the 0.2%% |log_ratio|>3 tail (diag_logratio_dist)
+max_masked_fraction: 0.05          # halt only if a step masks >5%% tokens (real divergence)

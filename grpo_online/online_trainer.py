@@ -37,7 +37,7 @@ logger = logging.getLogger("online")
 class OnlineTrainer:
     def __init__(self, model_name, lora_target_modules, lr=1e-6, lora_rank=32,
                  lora_alpha=32, device_map="auto", gradient_checkpointing=True,
-                 **gcfg):
+                 resume_adapter=None, **gcfg):
         self.tok = AutoTokenizer.from_pretrained(model_name)
         if self.tok.pad_token_id is None:
             self.tok.pad_token_id = self.tok.eos_token_id
@@ -53,10 +53,20 @@ class OnlineTrainer:
             base.enable_input_require_grads()
         base.config.use_cache = False
 
-        self.model = get_peft_model(base, LoraConfig(
-            r=lora_rank, lora_alpha=lora_alpha,
-            target_modules=list(lora_target_modules),
-            lora_dropout=0.0, bias="none", task_type="CAUSAL_LM"))
+        if resume_adapter:
+            # Continue training from a saved adapter (e.g. ckpt of an earlier
+            # round). is_trainable=True keeps the LoRA params requiring grad so
+            # the optimizer (built below) updates them. The adapter's own
+            # adapter_config.json supplies rank/targets, so they need not match
+            # the args. Optimizer (Adam) state restarts fresh — negligible.
+            from peft import PeftModel
+            self.model = PeftModel.from_pretrained(
+                base, resume_adapter, is_trainable=True)
+        else:
+            self.model = get_peft_model(base, LoraConfig(
+                r=lora_rank, lora_alpha=lora_alpha,
+                target_modules=list(lora_target_modules),
+                lora_dropout=0.0, bias="none", task_type="CAUSAL_LM"))
         self.model.train()
 
         self.cfg = GRPOConfig(

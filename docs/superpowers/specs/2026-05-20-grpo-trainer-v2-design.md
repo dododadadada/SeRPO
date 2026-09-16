@@ -39,7 +39,7 @@ The trainer modification is backward compatible: `save_every_n_steps=0` (default
 
 | param | v1 | v2 | rationale |
 |---|---|---|---|
-| `K_steps` | 40 | **178** | 89 batches × 2 epochs → 100% data, 2× exposure |
+| `K_steps` | 40 | **88** | 44 batches/epoch (712 / batch 16, drop_last) × 2 epochs → 100% data, 2× exposure |
 | `lr` | 3e-6 | **1e-6** | smaller per-step update; combined with α/r=1 below, effective LR ≈ 1e-6 |
 | `kl_beta` | 0.01 | **0.05** | 5× stronger drift penalty; β·kl product moves from ~1e-5 to ~1e-4 range |
 | `mini_batch_size` | 8 | **16** | gradient variance ~1/√2; halves the noisy sign-flip risk |
@@ -51,7 +51,7 @@ The trainer modification is backward compatible: `save_every_n_steps=0` (default
 | `lora_alpha` | 64 | **16** | α/r: 2 → 1, conservative scaling |
 | `lora_dropout` | 0.0 | 0.0 | unchanged |
 | `lora_target_modules` | 7 (Q/K/V/O + gate/up/down) | **3 (Q/V/O)** | attention-only LoRA; MLP modules excluded to constrain expressivity to retrieval/routing, not feature reshaping |
-| `save_every_n_steps` | — | **20** | NEW — intermediate ckpts at step 20/40/.../160 |
+| `save_every_n_steps` | — | **10** | NEW — intermediate ckpts at step 10/20/.../80 |
 | `seed` | 42 | 42 | unchanged |
 
 Effective trainable-parameter count drops roughly 4× (rank halved, target modules cut from 7 to 3, α scaled).
@@ -79,20 +79,20 @@ No other changes. Final-save logic at line ~274 is untouched.
 
 `grpo/ckpts/vanilla_full_continuous_v2/round1/`:
 ```
-adapter_config.json       # final (step 178)
+adapter_config.json       # final (step 88)
 adapter_model.safetensors
 config.json
 metrics.jsonl
-step_20/
+step_10/
   adapter_config.json
   adapter_model.safetensors
-step_40/
-step_60/
+step_20/
+step_30/
 ...
-step_160/
+step_80/
 ```
 
-8 intermediate checkpoints (steps 20, 40, …, 160) + final (step 178). Each adapter ≈ 66 MB at rank=16 with 3 target modules (v1 was 309 MB at rank=32 × 7 modules; v2 scales by (16/32) × (3/7) ≈ 21%). Total ≈ 9 × 66 MB ≈ 600 MB.
+8 intermediate checkpoints (steps 10, 20, …, 80) + final (step 88). Each adapter ≈ 66 MB at rank=16 with 3 target modules (v1 was 309 MB at rank=32 × 7 modules; v2 scales by (16/32) × (3/7) ≈ 21%). Total ≈ 9 × 66 MB ≈ 600 MB.
 
 ## Evaluation
 
@@ -102,7 +102,7 @@ This replaces in-loop early stopping with offline post-hoc selection — same ou
 
 ## Risks
 
-- **2 epochs may overfit on small data (89 task groups)**: monitor whether step 89 → step 178 metrics diverge in pg_loss / kl. If overfitting visible, single epoch (K=89) is the fallback.
+- **2 epochs may overfit on small data (89 task groups)**: monitor whether step 44 → step 88 metrics diverge in pg_loss / kl. If overfitting visible, single epoch (K=44) is the fallback.
 - **MLP exclusion may starve LoRA of capacity to learn long-horizon corrections**: if v2 underperforms v1 on dev despite all other improvements, attention-only is the suspect — add `gate_proj` back as next iteration.
 - **Lower lr + stronger KL may produce a "barely-moved" policy**: if dev scores are statistically indistinguishable from base across all 9 ckpts, the constraints are too tight; relax `kl_beta` to 0.03 and `lr` to 2e-6 in v3.
 
@@ -110,7 +110,7 @@ This replaces in-loop early stopping with offline post-hoc selection — same ou
 
 Before launching v2 training:
 1. Run trainer with v1 yaml — confirm output unchanged (smoke).
-2. Run trainer with v2 yaml dry — confirm K=178 wraps cached batches correctly via existing line 233-235 logic; confirm step_20/ directory appears at step 20.
+2. Run trainer with v2 yaml dry — confirm K=88 wraps cached batches correctly via existing line 233-235 logic (44-batch epoch × 2); confirm step_10/ directory appears at step 10.
 
 After training:
 1. Inspect `metrics.jsonl` — pg_loss/kl_loss trajectory should be visibly smoother than v1.

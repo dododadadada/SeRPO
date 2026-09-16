@@ -1,0 +1,68 @@
+# Resume of serpo_9b_failtraj_v3i from step_60 → step 65, reusing base precache.
+#
+# Continues from the step_60 checkpoint (produced by the resume70 run). Adds a
+# dev point at step_65. K_steps=76 kept so the on-disk K76 precache
+# (old_logp=ref_logp=base) validates and LOADS — reuse_precache_on_resume=true
+# skips re-precache. Stopped manually after step_65 checkpoint saves (5 steps).
+#
+# Run on GPU 2,1 (CUDA_VISIBLE_DEVICES=2,1): device_map=auto fills cuda:0 first,
+# so listing GPU2 first puts the LARGER shard on the empty GPU2; GPU1 (shared
+# with another user, ~19.5GB used) takes the smaller shard.
+
+model_name: Qwen/Qwen3.5-9B
+parquet_path: grpo/data/round0_9b/serpo_failtraj_binary.parquet
+output_dir: grpo/ckpts/serpo_9b_failtraj_v3i/round1
+
+resume_from: grpo/ckpts/serpo_9b_failtraj_v3i/round1/step_60
+reuse_precache_on_resume: true
+
+K_steps: 76
+mini_batch_size: 16
+micro_batch_size: 1
+precache_micro_batch_size: 1   # MUST equal micro_batch_size (v3-F root-cause fix)
+
+lr: 1.0e-6
+use_8bit_optim: false
+weight_decay: 0.0
+adam_beta1: 0.9
+adam_beta2: 0.999
+warmup_ratio: 0.0
+lr_scheduler_type: constant
+
+clip_eps: 0.2
+kl_beta: 0.04
+grad_clip: 1.0
+
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - in_proj_qkv
+  - in_proj_z
+  - in_proj_b
+  - in_proj_a
+  - out_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+load_in_4bit: false
+
+save_every_n_steps: 5          # earlier checkpoints for partial evaluation
+kl_halt_threshold: 5.0
+step0_kl_tolerance: 1.0e-3
+ratio_halt_threshold: 30.0   # log(30)=3.4 > masked valid_max(3.0): consistent backstop
+kl_per_token_cap: 10.0         # THE v3-G fix: bound outlier (artifact) tokens
+
+wandb_project: appworld-grpo-9b
+wandb_run_name: serpo_9b_failtraj_v3i_resume65from60
+
+seed: 42
+log_every: 1
+gradient_checkpointing: true
+outlier_logratio_threshold: 3.0    # v3-I: mask the 0.2% |log_ratio|>3 tail (diag_logratio_dist)
+max_masked_fraction: 0.05          # halt only if a step masks >5% tokens (real divergence)

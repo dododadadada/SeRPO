@@ -1,0 +1,68 @@
+# Vanilla GRPO on the SeRPO-failtraj failure pool, with CONTINUOUS (partial-credit)
+# outcome reward. Companion/control to serpo_9b_failtraj_v3i (judge-segment reward
+# on the IDENTICAL pool — verified token-identical, 473 rows / 77 tasks).
+#
+# Pool = trajectories with binary success == 0 (build_dataset failtraj filter
+# `outcome < 1.0`). serpo applies per-segment judge z-scores; here vanilla applies
+# outcome×trajectory z-scores using continuous reward (passes/num_tests), which —
+# unlike binary (all 0 over failures, degenerate) — gives real variance among
+# failures. The contrast: can outcome partial-credit learn from pure failures vs
+# SeRPO's judge segments, on the same pool.
+#
+# Same trainer hyperparams as serpo_9b_failtraj_v3i (v3-I stable recipe). Fresh
+# run (no resume) — precache computed from scratch (~3h) since it's a new parquet.
+
+model_name: Qwen/Qwen3.5-9B
+parquet_path: grpo/data/round0_9b/vanilla_failtraj_continuous.parquet
+output_dir: grpo/ckpts/vanilla_9b_failtraj_continuous_v3i/round1
+
+K_steps: 76
+mini_batch_size: 16
+micro_batch_size: 1
+precache_micro_batch_size: 1   # MUST equal micro_batch_size (v3-F root-cause fix)
+
+lr: 1.0e-6
+use_8bit_optim: false
+weight_decay: 0.0
+adam_beta1: 0.9
+adam_beta2: 0.999
+warmup_ratio: 0.0
+lr_scheduler_type: constant
+
+clip_eps: 0.2
+kl_beta: 0.04
+grad_clip: 1.0
+
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - in_proj_qkv
+  - in_proj_z
+  - in_proj_b
+  - in_proj_a
+  - out_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+load_in_4bit: false
+
+save_every_n_steps: 5
+kl_halt_threshold: 5.0
+step0_kl_tolerance: 1.0e-3
+ratio_halt_threshold: 30.0
+kl_per_token_cap: 10.0
+
+wandb_project: appworld-grpo-9b
+wandb_run_name: vanilla_9b_failtraj_continuous_v3i
+
+seed: 42
+log_every: 1
+gradient_checkpointing: true
+outlier_logratio_threshold: 3.0
+max_masked_fraction: 0.05

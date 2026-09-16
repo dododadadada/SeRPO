@@ -207,7 +207,7 @@ def run_build(
 ) -> None:
     if method not in ("vanilla", "serpo", "serpo_avg", "gigpo"):
         raise ValueError(f"unknown method: {method!r}")
-    if condition not in ("failonly", "full"):
+    if condition not in ("failonly", "full", "failtraj"):
         raise ValueError(f"unknown condition: {condition!r}")
     if method == "gigpo" and condition == "failonly":
         raise ValueError(
@@ -330,6 +330,27 @@ def run_build(
                     )
                 continue
 
+            # condition=failtraj: keep only the FAILED trajectories of this task,
+            # regrouped among themselves. A failure is defined by BINARY success
+            # (all tests pass <=> outcome 1.0), so the pool is `outcome < 1.0` —
+            # identical for outcome_type=binary (0/1) and continuous (the same
+            # binary-failing trajectories now carry partial-credit outcomes in
+            # [0,1)). This keeps the failtraj POOL identical across reward types
+            # so serpo (per-segment judge) and vanilla-continuous (partial-credit
+            # outcome) are compared on the exact same failures. Need >=2 for a
+            # within-group z-score.
+            if condition == "failtraj":
+                inputs = [it for it in inputs if it["outcome"] < 1.0]
+                if len(inputs) < 2:
+                    n_skipped_groups += 1
+                    skip_log.write(
+                        json.dumps(
+                            {"task_id": task_id, "reason": "failtraj_lt2_fails"}
+                        )
+                        + "\n"
+                    )
+                    continue
+
             written = build_dataset_for_task_group(
                 inputs, tokenizer=tokenizer, method=method, out_path=out_path,
                 gigpo_kwargs=gigpo_kwargs,
@@ -364,7 +385,7 @@ def main() -> None:
     )
     ap = argparse.ArgumentParser()
     ap.add_argument("--method", choices=["vanilla", "serpo", "serpo_avg", "gigpo"], required=True)
-    ap.add_argument("--condition", choices=["failonly", "full"], default="failonly")
+    ap.add_argument("--condition", choices=["failonly", "full", "failtraj"], default="failonly")
     ap.add_argument(
         "--outcome-type",
         choices=["binary", "continuous"],

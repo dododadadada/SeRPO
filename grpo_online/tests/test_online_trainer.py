@@ -37,6 +37,27 @@ def test_collate_chunks_old_ref_for_batch_gt_one():
     assert batch["ref_logp"].shape == (3, 4)
 
 
+def test_resume_loads_saved_adapter(tmp_path):
+    # Train a trainer a step so its LoRA differs from fresh init, save it, then
+    # build a new trainer with resume_adapter=that dir. The resumed model's LoRA
+    # must equal the saved weights (not a fresh random init), and stay trainable.
+    tr = OnlineTrainer(model_name="hf-internal-testing/tiny-random-gpt2",
+                       lora_target_modules=["c_attn"], device_map="cpu")
+    tr.train_on_batch(_batch(), K=1)
+    saved = tr.lora_snapshot()
+    adir = tmp_path / "ckpt"
+    tr.save_adapter(str(adir))
+
+    tr2 = OnlineTrainer(model_name="hf-internal-testing/tiny-random-gpt2",
+                        lora_target_modules=["c_attn"], device_map="cpu",
+                        resume_adapter=str(adir))
+    resumed = tr2.lora_snapshot()
+    assert saved and set(saved) == set(resumed)
+    for k in saved:
+        assert torch.allclose(saved[k].float(), resumed[k].float(), atol=1e-5)
+    assert any(p.requires_grad for n, p in tr2.model.named_parameters() if "lora_" in n)
+
+
 def test_train_step_updates_and_saves(tmp_path):
     tr = OnlineTrainer(model_name="hf-internal-testing/tiny-random-gpt2",
                        lora_target_modules=["c_attn"], device_map="cpu")

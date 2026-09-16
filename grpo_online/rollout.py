@@ -121,13 +121,14 @@ def run_rollout(cfg, round_idx, tasks, appworld_bin, experiment):
             "ROLLOUT_DATASET": ds_name,
             "VLLM_PORT": str(port),
         }
+        nproc = getattr(cfg, "appworld_num_processes", 4)
         subprocess.run(
             [
                 appworld_bin,
                 "run",
                 experiment,
                 "--num-processes",
-                "4",
+                str(nproc),
                 "--with-evaluation",
                 "--without-setup",
             ],

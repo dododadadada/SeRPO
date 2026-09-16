@@ -1,0 +1,11 @@
+# Smoke config — verifies the full loop plumbing end-to-end with minimal cost.
+# M=1 task, G=2 samples, 2 rounds. Gen server on GPU 3 (GPU 2 is busy with an eval).
+M: 1
+G: 2
+K: 1
+N_rounds: 1
+gen_ports: [8101]
+adapter_dir: grpo_online/runs/smoke/adapter_current
+output_dir: grpo_online/runs/smoke
+rubric_api_model: gpt-4o-mini
+rubric_api_key_env: OPENAI_API_KEY

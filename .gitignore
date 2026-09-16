@@ -17,7 +17,28 @@ appworld/experiments/outputs/
 # grpo artifacts (large build outputs only — fixtures stay tracked for reproducible tests)
 grpo/data/
 grpo/ckpts/
+grpo/ckpts_merged/
 grpo/metrics/
+grpo/eval/logs/
+
+# intermediate attempts (superseded configs/scripts kept locally only)
+grpo/archive/
+grpo/eval/diag_*.py
+docs/figures/
+
+# reference paper (copyrighted, not code)
+gigpo/GiGPO.pdf
+gigpo/texsrc/
+
+# online grpo run artifacts
+grpo_online/runs/
+
+# external env (install separately) & local-only artifacts
+appworld/
+experiments/
+demo/
+paper/
+rubric_reward/poc/
 
 # rubric reward artifacts
 rubric_reward/results/
