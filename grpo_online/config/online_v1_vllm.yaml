@@ -1,0 +1,28 @@
+# online_v1 with the vLLM generation backend (grpo_online/vllm_gen.py).
+# Same M/G/K/N/trainer HPs as online_v1.yaml; only generation + concurrency differ:
+#   - trainer on 1 GPU, vLLM on 1 GPU (2 GPUs total)
+#   - LoRA hot-swapped in vLLM per round (no merge, no restart)
+#   - all G seeds roll out concurrently, M tasks each -> up to M*G in-flight requests
+#   - judge API calls concurrent
+M: 6
+G: 8
+K: 1
+N_rounds: 76
+trainer_gpus: "0"
+gen_gpus: ["1"]
+gen_ports: [8101]
+gen_backend: vllm
+gen_model_name: Qwen/Qwen3.5-9B
+vllm_bin: .vllm.venv/bin/vllm
+vllm_max_num_seqs: 64
+vllm_gpu_mem_util: 0.85
+appworld_num_processes: 6
+seed_parallelism: 8
+# 4 concurrent judge calls: ~10k-token prompts vs. a 200k tokens/min limit on
+# gpt-4o-mini; 429s are retried with backoff (judge_max_attempts/judge_backoff_s).
+judge_workers: 4
+adapter_dir: grpo_online/runs/v1_vllm/adapter_current
+output_dir: grpo_online/runs/v1_vllm
+ckpt_every: 2
+rubric_api_model: gpt-4o-mini
+rubric_api_key_env: OPENAI_API_KEY

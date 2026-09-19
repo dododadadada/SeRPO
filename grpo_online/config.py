@@ -49,6 +49,38 @@ class OnlineConfig:
     rubric_api_base: str = ""
     rubric_api_key_env: str = "OPENAI_API_KEY"
     rubric_variant: str = "KS_baseline"
+    # Concurrent rubric-judge API calls per round (1 = sequential, as before).
+    judge_workers: int = 1
+    # Transient-error retries for the judge API (429/5xx/connection): attempts and
+    # linear backoff base (sleep = judge_backoff_s * attempt).
+    judge_max_attempts: int = 8
+    judge_backoff_s: float = 15.0
+    # Concurrent `appworld run` invocations, one per seed (1 = sequential, as
+    # before). >1 needs per-seed experiment configs; run_rollout generates
+    # <experiment>_seed<s>.jsonnet stubs that import the base config. In-flight
+    # generation requests = seed_parallelism x min(appworld_num_processes, M).
+    seed_parallelism: int = 1
+    # Generation backend. "peft": external gen_server.py (transformers.generate,
+    # serial), synced via POST /reload_adapter. "vllm": run_online owns a vLLM
+    # server (see vllm_gen.py) and hot-swaps the LoRA per round.
+    gen_backend: str = "peft"
+    # Model name AppWorld requests. Under vllm this is the LoRA's name; the base
+    # is served as vllm_base_served_name so requests always hit base+LoRA.
+    gen_model_name: str = "Qwen/Qwen3.5-9B"
+    vllm_bin: str = ".vllm.venv/bin/vllm"
+    vllm_base_served_name: str = "qwen35-9b-base"
+    vllm_max_model_len: int = 65536
+    vllm_max_num_seqs: int = 64
+    vllm_gpu_mem_util: float = 0.85
+    vllm_extra_args: list = field(default_factory=list)
+    # CUDA toolkit pinned for the vLLM child's JIT linking (see vllm_gen.build_serve_env).
+    # Must match the vLLM venv's torch CUDA major version.
+    vllm_cuda_home: str = "/usr/local/cuda-13.0"
+    # peft tensor-name prefix -> vLLM-side prefix, applied when exporting the
+    # adapter for vLLM (see vllm_gen.export_adapter_for_vllm). Default: text-only
+    # Qwen3_5ForCausalLM names -> Qwen3_5ForConditionalGeneration names.
+    vllm_lora_key_prefix_map: dict = field(default_factory=lambda: {
+        "base_model.model.model.": "base_model.model.model.language_model."})
 
 def load_config(path: str) -> OnlineConfig:
     raw = yaml.safe_load(open(path).read()) or {}

@@ -1,0 +1,33 @@
+# online v2 — identical to online_v1_vllm.yaml except for the effective step size.
+# v1 (lr 1e-6, lora_alpha 32 => alpha/r = 1) ran 48 rounds and finished statistically
+# tied with base on dev (57 tasks) and test_normal (168 tasks): TGC 18.5 both, KL ~5e-4
+# per step, i.e. the policy barely left base. This arm raises the per-step update ~20x:
+#   lr 1e-6 -> 1e-5, lora_alpha 32 -> 64 (alpha/r 1 -> 2).
+# NOTE: this departs from the paper's offline v3i recipe (lr 1e-6, alpha 32), which did
+# reach 22.0 TGC offline; the change follows the settings that worked in the user's verl
+# runs. Guards are unchanged (kl_halt 5.0, ratio_halt 30, masked-fraction 0.05), so a
+# too-large step shows up as skipped optimizer steps rather than silent divergence.
+lr: 1.0e-5
+lora_alpha: 64
+M: 6
+G: 8
+K: 1
+N_rounds: 76
+trainer_gpus: "0"
+gen_gpus: ["1"]
+gen_ports: [8101]
+gen_backend: vllm
+gen_model_name: Qwen/Qwen3.5-9B
+vllm_bin: .vllm.venv/bin/vllm
+vllm_max_num_seqs: 64
+vllm_gpu_mem_util: 0.85
+appworld_num_processes: 6
+seed_parallelism: 8
+# 4 concurrent judge calls: ~10k-token prompts vs. a 200k tokens/min limit on
+# gpt-4o-mini; 429s are retried with backoff (judge_max_attempts/judge_backoff_s).
+judge_workers: 4
+adapter_dir: grpo_online/runs/v2_lr1e5/adapter_current
+output_dir: grpo_online/runs/v2_lr1e5
+ckpt_every: 2
+rubric_api_model: gpt-4o-mini
+rubric_api_key_env: OPENAI_API_KEY

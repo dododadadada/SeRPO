@@ -57,3 +57,44 @@ def test_parse_judge_response_empty_array():
     """Empty array should return empty list (boundary condition)."""
     segs = parse_judge_response("[]")
     assert segs == []
+
+
+def test_call_with_backoff_retries_rate_limit_then_succeeds():
+    """429s are retried with linear backoff; the successful result is returned."""
+    import httpx
+    from openai import RateLimitError
+    from grpo_online.judge import call_with_backoff
+    resp = httpx.Response(429, request=httpx.Request("POST", "http://x"))
+    calls = {"n": 0}; slept = []
+    def fn():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("rate limited", response=resp, body=None)
+        return "ok"
+    assert call_with_backoff(fn, max_attempts=5, base_sleep=10, _sleep=slept.append) == "ok"
+    assert calls["n"] == 3 and slept == [10, 20]
+
+
+def test_call_with_backoff_gives_up_after_max_attempts():
+    import httpx
+    from openai import RateLimitError
+    from grpo_online.judge import call_with_backoff
+    resp = httpx.Response(429, request=httpx.Request("POST", "http://x"))
+    def fn():
+        raise RateLimitError("rate limited", response=resp, body=None)
+    with pytest.raises(RateLimitError):
+        call_with_backoff(fn, max_attempts=3, base_sleep=1, _sleep=lambda s: None)
+
+
+def test_call_with_backoff_does_not_retry_bad_request():
+    import httpx
+    from openai import BadRequestError
+    from grpo_online.judge import call_with_backoff
+    resp = httpx.Response(400, request=httpx.Request("POST", "http://x"))
+    n = {"c": 0}
+    def fn():
+        n["c"] += 1
+        raise BadRequestError("bad", response=resp, body=None)
+    with pytest.raises(BadRequestError):
+        call_with_backoff(fn, max_attempts=5, base_sleep=1, _sleep=lambda s: None)
+    assert n["c"] == 1

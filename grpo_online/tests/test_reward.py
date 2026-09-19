@@ -55,3 +55,33 @@ def test_score_round_all_judges_fail_returns_empty(monkeypatch):
     items = [{"task_id": "t1", "seed": 1, "lm_calls_path": "x/lm_calls.jsonl", "outcome": 1.0}]
     rds = score_round(items, _FakeTok(), boom_judge)
     assert rds == []
+
+
+def test_score_round_parallel_matches_sequential_and_skips_bad_items(monkeypatch):
+    """max_workers>1: same output as sequential; items dropped by tokenize/length
+    are never sent to the judge; a failing judge call drops only its item."""
+    import threading
+    from grpo_online import reward as R
+    def fake_tok(path, tokenizer):
+        if "toolong" in str(path):
+            return {"input_ids": [1] * (R.MAX_TOKENS + 1), "attention_mask": [1] * (R.MAX_TOKENS + 1),
+                    "response_mask": [1] * (R.MAX_TOKENS + 1), "step_token_ranges": [(0, 1)]}
+        return {"input_ids": [1, 2, 3, 4], "attention_mask": [1, 1, 1, 1],
+                "response_mask": [0, 1, 1, 0], "step_token_ranges": [(1, 3)]}
+    judged, lock = [], threading.Lock()
+    def judge(path):
+        with lock: judged.append(str(path))
+        if "boom" in str(path): raise RuntimeError("500")
+        return [{"contribution": 5 if "hi" in str(path) else 1, "start_step": 1, "end_step": 1}]
+    monkeypatch.setattr("grpo_online.reward.tokenize_trajectory", fake_tok)
+    items = [{"task_id": "t1", "seed": 1, "lm_calls_path": "hi/lm_calls.jsonl", "outcome": 1.0},
+             {"task_id": "t1", "seed": 2, "lm_calls_path": "lo/lm_calls.jsonl", "outcome": 0.0},
+             {"task_id": "t1", "seed": 3, "lm_calls_path": "toolong/lm_calls.jsonl", "outcome": 0.0},
+             {"task_id": "t1", "seed": 4, "lm_calls_path": "boom/lm_calls.jsonl", "outcome": 0.0}]
+    seq = score_round(items, _FakeTok(), judge)
+    judged.clear()
+    par = score_round(items, _FakeTok(), judge, max_workers=4)
+    assert [r.seed for r in par] == [r.seed for r in seq] == [1, 2]
+    assert sorted(judged) == ["boom/lm_calls.jsonl", "hi/lm_calls.jsonl", "lo/lm_calls.jsonl"]
+    assert np.allclose(np.asarray(par[0].token_adv), np.asarray(seq[0].token_adv))
+    assert np.asarray(par[0].token_adv)[1] > np.asarray(par[1].token_adv)[1]

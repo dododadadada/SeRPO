@@ -1,0 +1,19 @@
+# Smoke config for the vLLM backend: M=1, G=2, 1 round. Verifies server boot,
+# LoRA load, concurrent rollout, judge, one grad step, adapter hot-swap.
+M: 1
+G: 2
+K: 1
+N_rounds: 1
+trainer_gpus: "0"
+gen_gpus: ["1"]
+gen_ports: [8101]
+gen_backend: vllm
+vllm_bin: .vllm.venv/bin/vllm
+appworld_num_processes: 1
+seed_parallelism: 2
+judge_workers: 2
+adapter_dir: grpo_online/runs/smoke_vllm/adapter_current
+output_dir: grpo_online/runs/smoke_vllm
+ckpt_every: 1
+rubric_api_model: gpt-4o-mini
+rubric_api_key_env: OPENAI_API_KEY

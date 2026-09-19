@@ -9,6 +9,8 @@ own copies of the helpers, so this module is additive/non-invasive.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -147,10 +149,17 @@ def _format_trajectory(steps: list[dict]) -> str:
 
 
 def _load_instruction(task_id: str) -> Optional[str]:
+    """Task instruction, from (in order): the PoC tasks dir (instruction.txt, old
+    box), then AppWorld's own data (``<APPWORLD_ROOT>/data/tasks/<id>/specs.json``,
+    APPWORLD_ROOT defaulting to ``./appworld`` — the layout run_rollout assumes)."""
     p = BASE_TASKS_DIR / task_id / "instruction.txt"
-    if not p.exists():
-        return None
-    return p.read_text().strip()
+    if p.exists():
+        return p.read_text().strip()
+    root = Path(os.environ.get("APPWORLD_ROOT", "appworld"))
+    spec = root / "data" / "tasks" / task_id / "specs.json"
+    if spec.exists():
+        return str(json.loads(spec.read_text())["instruction"]).strip()
+    return None
 
 
 def _load_evaluation(report_path: Path) -> str:

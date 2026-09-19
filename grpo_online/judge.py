@@ -10,8 +10,12 @@ Segment schema consumed downstream by compute_serpo_advantage:
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 from typing import Callable
+
+logger = logging.getLogger("online")
 
 
 # ---------------------------------------------------------------------------
@@ -84,11 +88,33 @@ def make_api_judge(cfg) -> Callable[[str], list[dict]]:
 
     def judge_fn(lm_calls_path: str) -> list[dict]:
         messages = build_ks_baseline_prompt(lm_calls_path)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.0,
-        )
+        resp = call_with_backoff(
+            lambda: client.chat.completions.create(
+                model=model, messages=messages, temperature=0.0),
+            max_attempts=max_attempts, base_sleep=base_sleep)
         return parse_judge_response(resp.choices[0].message.content)
 
+    max_attempts = int(getattr(cfg, "judge_max_attempts", 8))
+    base_sleep = float(getattr(cfg, "judge_backoff_s", 15.0))
     return judge_fn
+
+
+def call_with_backoff(fn: Callable[[], object], max_attempts: int = 8,
+                      base_sleep: float = 15.0, _sleep=time.sleep) -> object:
+    """Retry fn() on transient API errors (429 rate limit, 5xx, connection) with
+    linear backoff: sleep base_sleep * attempt between tries. A round's 48 judge
+    prompts (~10k tokens each) exceed a 200k tokens/min budget when sent
+    concurrently, so 429s are expected and must be waited out, not dropped.
+    Non-transient errors (400s other than 429) propagate immediately."""
+    from openai import (APIConnectionError, APITimeoutError, InternalServerError,
+                        RateLimitError)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except (RateLimitError, InternalServerError, APIConnectionError, APITimeoutError) as e:
+            if attempt == max_attempts:
+                raise
+            wait = base_sleep * attempt
+            logger.warning("judge: %s (attempt %d/%d) — retrying in %.0fs",
+                           type(e).__name__, attempt, max_attempts, wait)
+            _sleep(wait)
